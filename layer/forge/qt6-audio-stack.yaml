@@ -1,0 +1,148 @@
+name: appliance-qt6-eglfs-audio
+version: 1
+description: "Qt6/QML/WebEngine on EGLFS + Python3/pip (global) + Wi-Fi + ALSA + JACK2 + lilv(0.24.12 static) + mod-host"
+compatibility:
+  debian_codename: [ bookworm ]
+
+mmdebstrap:
+  packages:
+    # ---- Base graphics / Qt 6 runtime (EGLFS / KMS-DRM) ----
+    - libqt6core6
+    - libqt6gui6
+    - libqt6network6
+    - qt6-qpa-plugins
+    - qml6-module-qtquick
+    - qml6-module-qtquick-window
+    - qml6-module-qtquick-controls
+    - qml6-module-qtquick-dialogs
+    - qml6-module-qtquick-layouts
+    - qml6-module-qtquick-shapes
+    - qml6-module-qtquick-effects          # Qt 6 replacement for QtGraphicalEffects
+    - qml6-module-qt-labs-folderlistmodel
+    - qml6-module-qt-labs-platform
+    - qml6-module-qtquick-virtualkeyboard
+    - qml6-module-qtwebengine               # WebEngine (Chromium-based; heavy)
+
+    # ---- KMS/GBM/EGL/GLES user-space ----
+    - libegl1
+    - libgles2
+    - libgbm1
+    - libdrm2
+
+    # ---- Audio (ALSA + JACK runtime lib) ----
+    - libasound2-dev
+    - alsa-utils
+    - alsa-ucm-conf
+    - libjack-jackd2-0
+    - libjack-jackd2-dev
+    - lv2-dev
+    - liblilv-dev
+    - ladspa-sdk
+    - libzita-alsa-pcmi-dev
+    - libzita-resampler-dev
+    - zita-alsa-pcmi-utils
+    - libarmadillo-dev
+
+    # ---- Python + pip (global), venv support ----
+    - python3
+    - python3-pip
+    - python3-setuptools
+    - python3-liblo
+    - python3-numpy
+
+    # ---- Wi-Fi (Bookworm uses NetworkManager) ----
+    - firmware-brcm80211
+    - network-manager
+
+    # ---- Quality-of-life tools (small) ----
+    - curl
+    - wget
+    - nano
+    - htop
+    - grep
+    - gzip
+    - util-linux
+    - git
+
+    # ---- Build toolchain (for JACK2, lilv, mod-host) ----
+    - build-essential
+    - pkg-config
+    - python3-dev
+    - liblo-dev
+    # JACK2 build deps:
+    - libasound2-dev
+    - libsamplerate0-dev
+    - libsndfile1-dev
+    - libzita-convolver-dev
+    # mod-host deps:
+    - libreadline-dev
+    - libfftw3-dev
+    - libeigen3-dev
+    - libserd-dev
+    - libsord-dev
+    - libsratom-dev
+
+  apt:
+    options:
+      APT::Install-Recommends: "false"
+      APT::Install-Suggests: "false"
+
+customize-hooks:
+  # ---------- Root-only login (set a password; prefer SSH keys in prod) ----------
+  - chroot $1 bash -lc "echo 'root:changeme' | chpasswd"
+  # Enable SSH for headless access
+  - touch $2/boot/ssh
+
+  # ---------- Default Qt to EGLFS (no desktop) ----------
+  - tee -a $1/etc/environment >/dev/null <<'EOF'
+QT_QPA_PLATFORM=eglfs
+EOF
+
+  # ---------- pip: global installs without flags, keep image lean ----------
+  - mkdir -p $1/etc/pip
+  - tee $1/etc/pip/pip.conf >/dev/null <<'EOF'
+[global]
+break-system-packages = true
+disable-pip-version-check = true
+no-cache-dir = true
+EOF
+  - mkdir -p $1/root/.config/pip
+  - ln -sf /etc/pip/pip.conf $1/root/.config/pip/pip.conf
+
+  # ---------- Bake your Python requirements (global) ----------
+  - tee $1/root/requirements.txt >/dev/null <<'EOF'
+# Your runtime Python deps:
+PySide6
+pyFFTW
+python-rtmidi
+JACK-Client
+pyserial
+rdflib
+requests
+EOF
+  - chroot $1 bash -lc "pip3 install -r /root/requirements.txt || true"
+
+  # NOTE on Controls 1:
+  # Qt Quick Controls 1 doesn't exist on Qt 6 / PySide6.
+  # If you absolutely need Controls 1, you must add Qt 5 side-by-side:
+  #   - apt: qml-module-qtquick-controls (Qt 5), qml-module-qtwebengine (Qt 5), and PySide2 via pip,
+  #   - launch those specific apps with Qt 5 / PySide2. This increases image size significantly.
+
+  # ---------- Build & install JACK2 (DivideCo fork) ----------
+  - mkdir -p $1/usr/src
+  - git clone --depth=1 https://github.com/divideco/jack2.git $1/usr/src/jack2
+  - chroot $1 bash -lc "cd /usr/src/jack2 && ./waf configure --prefix=/usr --alsa && ./waf && ./waf install"
+  - chroot $1 ldconfig
+
+  # ---------- Build & install lilv-0.24.12 (static, as requested) ----------
+  - chroot $1 bash -lc "cd /usr/src && wget -O lilv-0.24.12.tar.bz2 http://download.drobilla.net/lilv-0.24.12.tar.bz2"
+  - chroot $1 bash -lc "cd /usr/src && tar xvf lilv-0.24.12.tar.bz2"
+  - chroot $1 bash -lc "cd /usr/src/lilv-0.24.12 && python3 ./waf configure --prefix=/usr --static --static-progs --no-utils --no-bash-completion"
+  - chroot $1 bash -lc "cd /usr/src/lilv-0.24.12 && python3 ./waf build"
+  - chroot $1 bash -lc "cd /usr/src/lilv-0.24.12 && python3 ./waf install"
+  - chroot $1 ldconfig
+
+  # ---------- Build & install mod-host (DivideCo) ----------
+  - git clone --depth=1 https://github.com/divideco/mod-host.git $1/usr/src/mod-host
+  - chroot $1 bash -lc "cd /usr/src/mod-host && make && make install"
+
