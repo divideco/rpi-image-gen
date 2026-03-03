@@ -1,0 +1,26 @@
+{
+  "name": "example-nested_image",
+  "target": "pi5",
+  "layout": "rpios_single",
+  "detected_device_layer": "",
+  "detected_image_layer": "example-nested-layout",
+  "base_config": "",
+  "project_dir": "/home/micahvdm/Documents/Dev/rpi-image-gen/examples/nested_image",
+  "config_file": "/home/micahvdm/Documents/Dev/rpi-image-gen/examples/nested_image/config/nested.yaml",
+  "workroot": "",
+  "output_hint": "",
+  "interactive": false,
+  "build_mode": "build",
+  "build_only": "full",
+  "overrides": [
+    "image.name=example-nested_image"
+  ],
+  "ab_options": {
+    "tryboot": true,
+    "tryboot_a_b": true,
+    "partition_walk": true
+  },
+  "partitions": [],
+  "chroot_hook_enabled": true,
+  "chroot_tasks": []
+}
