@@ -66,6 +66,33 @@ mmdebstrap:
     - network-manager
 ```
 
+=== Static vs Dynamic Layers
+
+Layers are static unless explicitly marked dynamic. To render a layer at build time add:
+
+```
+# X-Env-Layer-Type: dynamic
+# X-Env-Layer-Generator: myscript
+```
+
+The loader then:
+
+1. Checks for the existence of a temporary directory specified by tag `DYNlayer=<tmpdir>` on the layer search path (`rpi-image-gen` does this automatically).
+2. Runs the generator with two arguments, `<template-path> <output-path>`, where the output is written to `DYNlayer/path/to/<layer-name>.yaml`. The `path/to` portion matches the layer’s path under its original search root, so dynamic layers mirror the same directory structure as static layers when reported via tagged paths.
+3. Reads all mmdebstrap/env content from the generated file while continuing to use the original `# X-Env-*` metadata for naming, dependencies, documentation, etc.
+
+Generators must write a complete layer to the output path. A trivial generator could copy the template directly to the output (e.g. `cp` works fine). More more complex generators may inject snapshot timestamps, merge user data, or pull content from other sources. If the generator writes nothing, the layer still 'exists' (metadata is intact) but it contains no YAML body information (packages, hooks, etc) and `--describe` output will reflect that. Dynamic layers provide a way to manipulate the layer YAML at build time. Modifications made by the generator only affect the YAML body. The original `# X-Env-*` metadata is always taken from the template.
+
+[IMPORTANT]
+====
+`X-Env-Layer-Generator` must resolve to an executable (on PATH or via a relative/absolute path).
+====
+
+[NOTE]
+====
+`rpi-image-gen` ships its own generators in `bin/generators`. If a source directory was specified at build time, `<SRCROOT>/bin/generators` is automatically included in `PATH` if present.
+====
+
 === Layer Attributes
 `X-Env-Layer-Name`: Layer name
 
@@ -82,6 +109,12 @@ mmdebstrap:
 `X-Env-Layer-RequiresProvider`: Services or capabilities this layer requires
 
 `X-Env-Layer-Conflicts`: Layers that cannot be used together with this one
+
+`X-Env-Layer-Type`: Static (default) or dynamic
+
+`X-Env-Layer-Generator`: If dynamic, the generator invoked by the loader
+
+`X-Env-Layer-Sets`: Space-separated KEY=VALUE pairs injected into the build environment when this layer is present
 
 === Dependencies and Providers
 
@@ -127,6 +160,15 @@ Only variables present in the environment can be used in dependencies.
 Unlike dependencies, environment variables are not supported when evaluating providers.
 ====
 
+==== X-Env-Layer-Sets
+
+Used to inject KEY=VALUE pairs into the build environment when this layer is present. Later layers override earlier ones.
+
+[IMPORTANT]
+====
+Typically used for internal build/feature flags that do not belong in the `IGconf_` namespace. Specifying `IGconf_` variables here will result in an error.
+====
+
 === Environment Variables
 `X-Env-VarPrefix`: Prefix for all variables declared by this layer (e.g., `device`)
 
@@ -139,6 +181,10 @@ Unlike dependencies, environment variables are not supported when evaluating pro
 `X-Env-Var-<name>-Valid`: Validation rule (type, range, regex, enum, etc.)
 
 `X-Env-Var-<name>-Set`: Set policy (immediate, lazy, force, skip)
+
+`X-Env-Var-<name>-Triggers`: Derived actions based on the variable value
+
+`X-Env-Var-<name>-Conflicts`: Variables that cannot be set when this variable is also set
 
 === Variable Naming Convention
 Variables follow the pattern: `IGconf_<prefix>_<name>`
@@ -155,6 +201,132 @@ Variable values support dynamic placeholders:
 `${FILENAME}`: Name of the layer file (without extension)
 
 `${FILEPATH}`: Full path to the layer file
+
+=== Triggers
+
+Triggers (`X-Env-Var-*-Triggers`) allow a variable’s resolved value to automatically perform actions, meaning that derived settings can be injected based on that value. Format as follows (one rule per line):
+
+* Conditional (same variable): `when=VALUE set TARGET=VALUE [policy=force|immediate|lazy]`
+* Conditional (cross-variable): `when=VAR=VALUE set TARGET=VALUE [policy=force|immediate|lazy]`
+* Conditional (cross-variable): `when=VAR!=VALUE set TARGET=VALUE [policy=force|immediate|lazy]`
+* Unconditional: `set TARGET=VALUE [policy=force|immediate|lazy]`
+
+For same-variable conditions, matching is an exact string comparison against the source variable's resolved value. For cross-variable conditions, matching is an exact string comparison against the referenced variable's resolved value (ie, the referenced variable is used as-is). Unconditional rules always fire. The first token after the action must be `TARGET=VALUE`. `policy=` is optional and defaults to `immediate` if not specified. If a cross-variable condition references an unknown variable, resolution fails with an error.
+
+Lint will fail on:
+
+* Unknown actions.
+* Actions that do not start with `TARGET=VALUE`.
+* Target names that are not POSIX identifiers.
+
+Usage:
+
+* Target values are preserved as literals with no expansion.
+* Triggers are collected from every definition of a variable across all layers. Because trigger rules are merged across layers and evaluated against the effective final (resolved) value, upstream layer trigger rules can still fire when a downstream layer declaration determines that final value. Suppression of upstream triggers is not supported.
+
+==== Supported actions
+
+[cols="1,3,2,3",options="header"]
+|===
+|Action |Description |Default policy |Applies to
+
+|`set` |Inject an environment variable with the given value and policy. | immediate |X-Env-*-Var
+|===
+
+==== Examples
+
+* Conditional:
++
+`# X-Env-Var-rootfs_type-Triggers: when=btrfs set IG_HAS_BTRFS_PROGS=1 policy=force`
+
+* Unconditional:
++
+`# X-Env-Var-rootfs_type-Triggers: set IG_ALWAYS_ON=1 policy=immediate`
+
+* Multiple with different conditions (new line per condition helps readability, but is not mandatory):
++
+```
+# X-Env-Var-rootfs_type-Triggers:
+#  when=btrfs set IG_HAS_BTRFS_PROGS=1 policy=force
+#  when=ext4 set IG_HAS_E2FS_PROGS=1 policy=force
+```
+
+[IMPORTANT]
+====
+Trigger precedence is determined by layer order, not file order.
+
+* Variable declarations in the same layer share that layer's position.
+* If a trigger sets a variable, it adds a new definition for the target variable at the same layer position.
+* Any definition of that target variable from a later layer (higher position) wins via the normal force/immediate/lazy policy rules.
+
+Within a single layer:
+
+* If the same variable is declared multiple times, last declaration is retained (before triggers are considered).
+* If a trigger sets a variable, the trigger’s injected definition sits after the layer’s base definition and will override that variable’s declaration in the same layer (force/immediate/lazy still apply). A later layer can still override the trigger.
+====
+
+==== Example (same layer)
+
+```
+# X-Env-VarPrefix: image
+#
+# X-Env-Var-deploy_type: develop
+# X-Env-Var-deploy_type-Valid: develop,production
+# X-Env-Var-deploy_type-Set: y
+# X-Env-Var-deploy_type-Triggers: when=production set IGconf_image_pmap=crypt policy=force
+#
+# X-Env-Var-pmap: clear
+# X-Env-Var-pmap-Valid: clear,crypt
+# X-Env-Var-pmap-Set: y
+# X-Env-Var-pmap-Set: force
+```
+
+If `IGconf_image_deploy_type` resolves to `production`, the trigger injects `IGconf_image_pmap=crypt` after the source variable, overriding `pmap: clear` in the same layer. A later layer defining `IGconf_image_pmap` with `force` would still win over the trigger.
+
+==== Example (cross-var across layers)
+
+```
+# X-Env-VarPrefix: device
+# X-Env-Var-storage_type: sd
+# X-Env-Var-storage_type-Valid: sd,emmc
+# X-Env-Var-storage_type-Set: y
+```
+```
+# X-Env-VarPrefix: image
+# X-Env-Var-ptable_protect: n
+# X-Env-Var-ptable_protect-Triggers: when=IGconf_device_storage_type=emmc set IGconf_image_ptable_protect=y
+```
+
+If `IGconf_device_storage_type` resolves to `emmc`, the trigger injects `IGconf_image_ptable_protect=y`.
+
+
+=== Variable Conflicts
+
+Variable conflicts (`X-Env-Var-*-Conflicts`) allow a variable to declare that it cannot be set when other variables are also set, or when other variables do/do not have a particular value. Conflict resolution takes place on the final set of resolved `IGconf` prefixed variables. When declaring conflicts, any variable name can be specified (fully prefixed) that exists in the final set - not just variables declared in the same layer, ie cross-layer conflict resolution is supported. If a variable is set in a base layer and overridden in a consumer layer, conflicts are defined by the winning definition, ie conflicts from the earlier definition are not inherited.
+
+Conflict expressions adhere to `<precursor> <condition>` syntax. The precursor is optional (`when=<value>`) and a single expression may only include one precursor. The condition can be unconditional (`name`) or conditional (`name=value` / `name!=value`). Multiple expressions can be specified, separated by commas, and may be wrapped across multiple lines. Each expression may include only one precursor.
+
+Examples:
+
+```
+# Unconditional:
+# X-Env-Var-user1pass:
+# X-Env-Var-user1pass-Conflicts: user1hashpass
+#
+# X-Env-Var-user1hashpass:
+# X-Env-Var-user1hashpass-Conflicts: user1pass
+
+# Conditional (no precursor):
+# X-Env-Var-storage_type: sd
+# X-Env-Var-storage_type-Valid: sd,emmc,nvme
+#
+# X-Env-Var-lockemmc: y
+# X-Env-Var-lockemmc-Valid: bool
+# X-Env-Var-lockemmc-Conflicts: storage_type!=emmc
+
+# Conditional (with precursor):
+# X-Env-Var-lockemmc-Conflicts: when=y storage_type!=emmc
+```
 
 == Configuration Variables
 

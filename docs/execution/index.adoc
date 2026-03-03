@@ -8,7 +8,7 @@ link:../index.adoc[← Back to Main Documentation]
 
 == Overview
 
-The rpi-image-gen build process consists of five main stages executed sequentially:
+The rpi-image-gen build process consists of multiple stages executed sequentially:
 
 . **Parameter Assembly** - Input validation and configuration parsing
 . **Layer Processing** - Layer collection, validation, and dependency resolution
@@ -80,7 +80,7 @@ Set up the build environment and assemble bdebstrap parameters with the necessar
   ** Environment variables
   ** Target settings
   ** All compatible YAML layer files
-  ** Installing core hook runners for setup, essential, customize, and cleanup phases
+  ** Installing core hook runners for setup, extract, essential, customize, and cleanup phases
 
 == Stage 4: Filesystem Generation
 
@@ -89,11 +89,11 @@ Create the filesystem and generate the Software Bill of Materials.
 
 === Activities
 
-* *Hook*`[pre-build.sh]`: Execute from within image and device asset directory.
+* *Hook*`[pre-build.sh]`
   ** _Example Use_ - Custom validation of pre-build settings
 * *Filesystem Generation*: Execute bdebstrap
-* *Overlays*: Apply static filesystem overlays from image and device `rootfs-overlay/` directories.
-* *Hook*`[post-build.sh]`: Execute from within image and device asset directory.
+* *Overlays*: Apply static filesystem overlays
+* *Hook*`[post-build.sh]`
   ** _Example Use_ - Custom installation of image or device specific assets, eg boot configuration files.
 * *SBOM*: Execute the Software Bill of Materials provider to create the SBOM file.
 
@@ -105,10 +105,10 @@ Create disk images from the prepared filesystem using the provider.
 
 === Activities
 
-* *Hook*`[pre-image.sh]`: Execute from within device and image asset directory.
+* *Hook*`[pre-image.sh]`
   ** _Example Use_ - Creating genimage templates, setting up image creation resources.
 * *Image Generation*: Execute the image provider to create images.
-* *Hook*`[post-image.sh]`: Execute from within device and image asset directory.
+* *Hook*`[post-image.sh]`
   ** _Example Use_ - Custom packaging, signing with device keys, etc.
 
 == Stage 6: Deployment
@@ -130,21 +130,83 @@ Install and compress:
 Hooks are optional but if a hook is to be executed, it must have executable permissions for the user performing the build.
 ====
 
+=== Overview
+
+`rpi-image-gen` supports different classifications of hook, and runs all hooks in _phases_ via script `bin/runner`. Runner is responsible for invoking all hook scripts outside of layer declarations and is the single entry point every hook runs through. `bdebstrap` invokes it for each lifecycle phase (setup, customize, etc.) and the main script calls it for image, SBOM, and deploy phases. Runner:
+
+* Resolves hook locations from tagged specs (`IGROOT:*`, `DEVICE_ASSET:*`, `VAR:IGconf_*`) so the same path resolves regardless of environment (e.g. host vs container).
+* Executes phase-specific hooks in a deterministic order.
+* Applies optional filesystem overlays during `customize`.
+* Supports fallback hook groups (A|B) so that built-in hooks run when no custom is provided.
+* Orchestrates deterministic hook execution with the correct environment and arguments, regardless of where the build runs.
+
+=== Phases
+
+[cols="1,1,1,4", options="header"]
+|===
+| Phase      | Context   | Classification | Execution
+| setup      | bdebstrap | bundle         | After build output directory creation, before any packages are downloaded or installed
+| pre-build  | bdebstrap | single         | Within setup phase
+| extract    | bdebstrap | bundle         | After `Essential:yes` packages have been extracted, before installing them
+| essential  | bdebstrap | bundle         | After `Essential:yes` packages have been installed, before installing remaining packages
+| customize  | bdebstrap | bundle         | After all packages are installed, before cleanup commences
+| cleanup    | bdebstrap | bundle         | After customize
+| post-build | main      | single         | After bdebstrap, before sbom
+| sbom       | main      | single         | After post-build
+| pre-image  | main      | single         | After sbom, before image generation
+| post-image | main      | single         | After image generation
+| finalize   | main      | single         | After sbom and image generation, before deploy
+| deploy     | main      | single         | Final stage
+|===
+
+=== Hook Classification: bundle
+
+Runner scans for `setup*`, `extract*`, `essential*`, `customize*`, and `cleanup*` hooks inside `bdebstrap/` subdirectories of:
+
+* Device asset directory (`DEVICE_ASSET`)
+* Image asset directory (`IMAGE_ASSET`)
+* Source tree (`SRCROOT/bdebstrap`)
+* Built-in (`IGROOT/scripts/bdebstrap`)
+
+It executes matching hooks (alphanumeric basename) in that order for each phase. Subdirectories aren’t traversed; the file extension is ignored.
+
+=== Hook Classification: single
+
+With the exception of sbom and deploy, all `single` hooks are customisable and optional. Runner scans for `<phase>.sh` inside:
+
+* Device asset directory (if set)
+* Image asset directory (if set)
+* Built-in (IGROOT)
+* Source tree (SRCROOT)
+
+Execution takes place from the parent directory of the hook.
+
+=== Overlays
+
+Filesystem overlays are applied during `customize`. The following overlay directories are supported:
+
+* `DEVICE_ASSET:device/rootfs-overlay`
+* `IMAGE_ASSET:device/rootfs-overlay`
+* `SRCROOT:rootfs-overlay`
+
 === Core
 
-rpi-image-gen executes its own `pre/post build/image` hooks for device and image regardless of the configuration. These hooks perform generic tasks, such as installing the image provisioning map. Depending on requirements, there may not be a need to use custom hooks at these stages.
-
+rpi-image-gen ships its own hooks to perform generic tasks. Depending on requirements, there may not be a need to add custom hooks at these stages as the generic hooks execute before SRCROOT hooks.
 
 === Device and Image Asset Directory
-A device or image layer may declare `IGconf_device_assetdir` or `IGconf_image_assetdir` respectively as a location of where to store device or image specific assets. These optional variables are referenced by rpi-image-gen. If the pre/post build and pre/post image hooks mentioned above are present in these locations, they will be executed. The hooks won't execute if the variables are not declared.
 
-=== bdebstrap
+If a layer sets `IGconf_device_assetdir` (`DEVICE_ASSET`) or `IGconf_image_assetdir` (`IMAGE_ASSET`), Runner automatically looks for optional hooks inside those directories:
 
-rpi-image-gen extends the support of bdebstrap hooks to image, device and source directories. Hooks with filenames beginning with ```setup```,  ```essential```, ```customize``` and ```cleanup```, and which only contain alphanumeric characters, are supported and must exist in a sub-directory named```bdebstrap``` within the directory in order for them to be run at the respective stage of chroot creation. Their file extension is ignored. Sub-directories are not traversed.
+[source,bash]
+----
+<assetdir>/<phase>.sh
+----
+
+If the asset directory isn’t defined, its hooks are skipped.
 
 === initramfs
 
-If ```initramfs-tools(7)``` is installed in the chroot, rpi-image-gen extends the support of initramfs scripts and hooks to image and device directories via their sub-directory ```device/initramfs-tools```. If present, the entire contents of this directory is recursively copied into the chroot. Mode and ownership attributes are preserved. Destination files will not be overwritten. rpi-image-gen performs this operation during the ```customize``` stage of chroot creation and guarantees it will take place after invocation of all image and device bdebstrap ```customize``` hooks.
+If `initramfs-tools(7)` is installed in the chroot, rpi-image-gen extends the support of `initramfs-tools` compatible scripts and hooks to image and device directories via their sub-directory `device/initramfs-tools`. If present, the entire contents of this directory is recursively copied into the chroot. Mode and ownership attributes are preserved. Destination files will not be overwritten. This takes place during the `customize` stage of chroot creation and after execution of `DEVICE_ASSET` and `IMAGE_ASSET` hook bundles.
 
 == Interactive Mode
 

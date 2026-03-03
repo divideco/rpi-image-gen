@@ -123,34 +123,19 @@
     <div class="header">
         <h1>rpi-cm4</h1>
         <span class="badge">device</span>
-        <span class="badge">v1.0.0</span>
+        <span class="badge">v1.2.0</span>
         <p>Raspberry Pi CM4 specific device layer</p>
     </div>
-
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
         <p><strong>Depends on:</strong></p>
         <div class="deps">
             <a href="rpi-generic64.html" class="dep-badge">rpi-generic64</a>
         </div>
-        
-        
-        
         <p><strong>Provides:</strong> device</p>
-        
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>device</code>):</p>
         <table>
             <thead>
@@ -163,67 +148,59 @@
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_device_class</code></td>
                     <td>Device class</td>
                     <td>
-                       
-                           
                            <code>cm4</code>
-                           
-                       
                     </td>
                     <td>Must be one of: cm4</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
-                    <td><code>IGconf_device_storage_type</code></td>
-                    <td>Storage media type.</td>
+                    <td><code>IGconf_device_variant</code></td>
+                    <td>Device variant</td>
                     <td>
-                       
-                           
-                           <code>emmc</code>
-                           
-                       
+                           <code>8G</code>
                     </td>
-                    <td>Must be one of: sd, emmc</td>
+                    <td>Must be one of: 8G, 16G, 32G, lite</td>
                     <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
+                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
+                <tr>
+                    <td><code>IGconf_device_storage_type</code></td>
+                    <td>Storage media the image is intended for, as seen
+ by the OS.</td>
+                    <td>
+                           <code>emmc</code>
+                    </td>
+                    <td>Must be one of: emmc, sd, nvme, usb</td>
+                    <td>
+                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
+                    </td>
+                </tr>
                 <tr>
                     <td><code>IGconf_device_assetdir</code></td>
                     <td>Device specific asset directory</td>
                     <td>
-                       
-                           
                            <code>${DIRECTORY}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>cm4/device.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

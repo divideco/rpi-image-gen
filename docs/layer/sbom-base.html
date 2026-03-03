@@ -126,44 +126,25 @@
         <span class="badge">v1.0.0</span>
         <p>SBOM provider and settings.</p>
     </div>
-
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
         <p><strong>Depends on:</strong></p>
         <div class="deps">
             <a href="artefact-base.html" class="dep-badge">artefact-base</a>
         </div>
-        
-        
         <p><strong>Required by:</strong></p>
         <div class="deps">
             
             <a href="image-base.html" class="dep-badge">image-base</a>
             
         </div>
-        
-        
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
         <p><strong>References:</strong>
-        
         <code>IGconf_artefact_target_name</code>, 
-        
         <code>IGconf_artefact_version</code>
-        
         </p>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>sbom</code>):</p>
         <table>
             <thead>
@@ -176,103 +157,72 @@
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_sbom_enable</code></td>
                     <td>Enable SBOM generation</td>
                     <td>
-                       
-                           
                            <code>y</code>
-                           
-                       
                     </td>
                     <td>Boolean value - accepts: true/false, 1/0, yes/no, y/n (case insensitive)</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_version</code></td>
                     <td>Version string of the SBOM</td>
                     <td>
-                       
-                           
                            <code class="long-default">${IGconf_artefact_version}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_name</code></td>
                     <td>Identifier name of the SBOM</td>
                     <td>
-                       
-                           
                            <code class="long-default">${IGconf_artefact_target_name}-${IGconf_sbom_version}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_filename</code></td>
                     <td>SBOM filename</td>
                     <td>
-                       
-                           
                            <code>${IGconf_sbom_name}.sbom</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_hook</code></td>
                     <td>Hook to generate the SBOM filename.</td>
                     <td>
-                       
-                           
                            <code>${DIRECTORY}/gen.sh</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_provider</code></td>
                     <td>SBOM provider</td>
                     <td>
-                       
-                           
                            <code>syft</code>
-                           
-                       
                     </td>
                     <td>Must be one of: syft</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_sbom_syft_config</code></td>
                     <td>Configuration file containing the settings syft
@@ -285,30 +235,36 @@
  For further information, refer to
  https://github.com/anchore/syft/wiki/Configuration</td>
                     <td>
-                       
-                           
                            <code>${DIRECTORY}/syft.yaml</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
+                <tr>
+                    <td><code>IGconf_sbom_syft_source</code></td>
+                    <td>Source specifier syft will use as its input for
+ scanning. Will be determined automatically if empty based on the output
+ target.
+ For further information regarding syft scan sources, refer to
+ https://github.com/anchore/syft/wiki/supported-sources</td>
+                    <td>
+                           <code>&lt;empty&gt;</code>
+                    </td>
+                    <td>String value (may be empty)</td>
+                    <td>
+                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
+                    </td>
+                </tr>
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>sbom/sbom.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

@@ -172,9 +172,13 @@
 </li>
 <li><a href="#_hooks">Hooks</a>
 <ul class="sectlevel2">
+<li><a href="#_overview_2">Overview</a></li>
+<li><a href="#_phases">Phases</a></li>
+<li><a href="#_hook_classification_bundle">Hook Classification: bundle</a></li>
+<li><a href="#_hook_classification_single">Hook Classification: single</a></li>
+<li><a href="#_overlays">Overlays</a></li>
 <li><a href="#_core">Core</a></li>
 <li><a href="#_device_and_image_asset_directory">Device and Image Asset Directory</a></li>
-<li><a href="#_bdebstrap">bdebstrap</a></li>
 <li><a href="#_initramfs">initramfs</a></li>
 </ul>
 </li>
@@ -192,7 +196,7 @@
 <h2 id="_overview"><a class="anchor" href="#_overview"></a><a class="link" href="#_overview">Overview</a></h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The rpi-image-gen build process consists of five main stages executed sequentially:</p>
+<p>The rpi-image-gen build process consists of multiple stages executed sequentially:</p>
 </div>
 <div class="olist arabic">
 <ol class="arabic">
@@ -355,7 +359,7 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 <p>All compatible YAML layer files</p>
 </li>
 <li>
-<p>Installing core hook runners for setup, essential, customize, and cleanup phases</p>
+<p>Installing core hook runners for setup, extract, essential, customize, and cleanup phases</p>
 </li>
 </ul>
 </div>
@@ -379,7 +383,7 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Hook</strong><code>[pre-build.sh]</code>: Execute from within image and device asset directory.</p>
+<p><strong>Hook</strong><code>[pre-build.sh]</code></p>
 <div class="ulist">
 <ul>
 <li>
@@ -392,10 +396,10 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 <p><strong>Filesystem Generation</strong>: Execute bdebstrap</p>
 </li>
 <li>
-<p><strong>Overlays</strong>: Apply static filesystem overlays from image and device <code>rootfs-overlay/</code> directories.</p>
+<p><strong>Overlays</strong>: Apply static filesystem overlays</p>
 </li>
 <li>
-<p><strong>Hook</strong><code>[post-build.sh]</code>: Execute from within image and device asset directory.</p>
+<p><strong>Hook</strong><code>[post-build.sh]</code></p>
 <div class="ulist">
 <ul>
 <li>
@@ -426,7 +430,7 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 <div class="ulist">
 <ul>
 <li>
-<p><strong>Hook</strong><code>[pre-image.sh]</code>: Execute from within device and image asset directory.</p>
+<p><strong>Hook</strong><code>[pre-image.sh]</code></p>
 <div class="ulist">
 <ul>
 <li>
@@ -439,7 +443,7 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 <p><strong>Image Generation</strong>: Execute the image provider to create images.</p>
 </li>
 <li>
-<p><strong>Hook</strong><code>[post-image.sh]</code>: Execute from within device and image asset directory.</p>
+<p><strong>Hook</strong><code>[post-image.sh]</code></p>
 <div class="ulist">
 <ul>
 <li>
@@ -498,27 +502,216 @@ $ rpi-image-gen build -S ./my-project/ -c kiosk.cfg</code></pre>
 </table>
 </div>
 <div class="sect2">
+<h3 id="_overview_2"><a class="anchor" href="#_overview_2"></a><a class="link" href="#_overview_2">Overview</a></h3>
+<div class="paragraph">
+<p><code>rpi-image-gen</code> supports different classifications of hook, and runs all hooks in <em>phases</em> via script <code>bin/runner</code>. Runner is responsible for invoking all hook scripts outside of layer declarations and is the single entry point every hook runs through. <code>bdebstrap</code> invokes it for each lifecycle phase (setup, customize, etc.) and the main script calls it for image, SBOM, and deploy phases. Runner:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Resolves hook locations from tagged specs (<code>IGROOT:*</code>, <code>DEVICE_ASSET:*</code>, <code>VAR:IGconf_*</code>) so the same path resolves regardless of environment (e.g. host vs container).</p>
+</li>
+<li>
+<p>Executes phase-specific hooks in a deterministic order.</p>
+</li>
+<li>
+<p>Applies optional filesystem overlays during <code>customize</code>.</p>
+</li>
+<li>
+<p>Supports fallback hook groups (A|B) so that built-in hooks run when no custom is provided.</p>
+</li>
+<li>
+<p>Orchestrates deterministic hook execution with the correct environment and arguments, regardless of where the build runs.</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_phases"><a class="anchor" href="#_phases"></a><a class="link" href="#_phases">Phases</a></h3>
+<table class="tableblock frame-all grid-all stripes-even stretch">
+<colgroup>
+<col style="width: 14.2857%;">
+<col style="width: 14.2857%;">
+<col style="width: 14.2857%;">
+<col style="width: 57.1429%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Phase</th>
+<th class="tableblock halign-left valign-top">Context</th>
+<th class="tableblock halign-left valign-top">Classification</th>
+<th class="tableblock halign-left valign-top">Execution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">setup</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bundle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After build output directory creation, before any packages are downloaded or installed</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">pre-build</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Within setup phase</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">extract</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bundle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After <code>Essential:yes</code> packages have been extracted, before installing them</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">essential</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bundle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After <code>Essential:yes</code> packages have been installed, before installing remaining packages</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">customize</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bundle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After all packages are installed, before cleanup commences</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">cleanup</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bdebstrap</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">bundle</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After customize</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">post-build</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After bdebstrap, before sbom</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">sbom</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After post-build</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">pre-image</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After sbom, before image generation</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">post-image</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After image generation</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">finalize</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">After sbom and image generation, before deploy</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">deploy</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">main</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">single</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Final stage</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="_hook_classification_bundle"><a class="anchor" href="#_hook_classification_bundle"></a><a class="link" href="#_hook_classification_bundle">Hook Classification: bundle</a></h3>
+<div class="paragraph">
+<p>Runner scans for <code>setup*</code>, <code>extract*</code>, <code>essential*</code>, <code>customize*</code>, and <code>cleanup*</code> hooks inside <code>bdebstrap/</code> subdirectories of:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Device asset directory (<code>DEVICE_ASSET</code>)</p>
+</li>
+<li>
+<p>Image asset directory (<code>IMAGE_ASSET</code>)</p>
+</li>
+<li>
+<p>Source tree (<code>SRCROOT/bdebstrap</code>)</p>
+</li>
+<li>
+<p>Built-in (<code>IGROOT/scripts/bdebstrap</code>)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>It executes matching hooks (alphanumeric basename) in that order for each phase. Subdirectories aren’t traversed; the file extension is ignored.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_hook_classification_single"><a class="anchor" href="#_hook_classification_single"></a><a class="link" href="#_hook_classification_single">Hook Classification: single</a></h3>
+<div class="paragraph">
+<p>With the exception of sbom and deploy, all <code>single</code> hooks are customisable and optional. Runner scans for <code>&lt;phase&gt;.sh</code> inside:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>Device asset directory (if set)</p>
+</li>
+<li>
+<p>Image asset directory (if set)</p>
+</li>
+<li>
+<p>Built-in (IGROOT)</p>
+</li>
+<li>
+<p>Source tree (SRCROOT)</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Execution takes place from the parent directory of the hook.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_overlays"><a class="anchor" href="#_overlays"></a><a class="link" href="#_overlays">Overlays</a></h3>
+<div class="paragraph">
+<p>Filesystem overlays are applied during <code>customize</code>. The following overlay directories are supported:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>DEVICE_ASSET:device/rootfs-overlay</code></p>
+</li>
+<li>
+<p><code>IMAGE_ASSET:device/rootfs-overlay</code></p>
+</li>
+<li>
+<p><code>SRCROOT:rootfs-overlay</code></p>
+</li>
+</ul>
+</div>
+</div>
+<div class="sect2">
 <h3 id="_core"><a class="anchor" href="#_core"></a><a class="link" href="#_core">Core</a></h3>
 <div class="paragraph">
-<p>rpi-image-gen executes its own <code>pre/post build/image</code> hooks for device and image regardless of the configuration. These hooks perform generic tasks, such as installing the image provisioning map. Depending on requirements, there may not be a need to use custom hooks at these stages.</p>
+<p>rpi-image-gen ships its own hooks to perform generic tasks. Depending on requirements, there may not be a need to add custom hooks at these stages as the generic hooks execute before SRCROOT hooks.</p>
 </div>
 </div>
 <div class="sect2">
 <h3 id="_device_and_image_asset_directory"><a class="anchor" href="#_device_and_image_asset_directory"></a><a class="link" href="#_device_and_image_asset_directory">Device and Image Asset Directory</a></h3>
 <div class="paragraph">
-<p>A device or image layer may declare <code>IGconf_device_assetdir</code> or <code>IGconf_image_assetdir</code> respectively as a location of where to store device or image specific assets. These optional variables are referenced by rpi-image-gen. If the pre/post build and pre/post image hooks mentioned above are present in these locations, they will be executed. The hooks won&#8217;t execute if the variables are not declared.</p>
+<p>If a layer sets <code>IGconf_device_assetdir</code> (<code>DEVICE_ASSET</code>) or <code>IGconf_image_assetdir</code> (<code>IMAGE_ASSET</code>), Runner automatically looks for optional hooks inside those directories:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlight"><code class="language-bash" data-lang="bash">&lt;assetdir&gt;/&lt;phase&gt;.sh</code></pre>
 </div>
 </div>
-<div class="sect2">
-<h3 id="_bdebstrap"><a class="anchor" href="#_bdebstrap"></a><a class="link" href="#_bdebstrap">bdebstrap</a></h3>
 <div class="paragraph">
-<p>rpi-image-gen extends the support of bdebstrap hooks to image, device and source directories. Hooks with filenames beginning with <code><code>setup</code></code>,  <code><code>essential</code></code>, <code><code>customize</code></code> and <code><code>cleanup</code></code>, and which only contain alphanumeric characters, are supported and must exist in a sub-directory named<code><code>bdebstrap</code></code> within the directory in order for them to be run at the respective stage of chroot creation. Their file extension is ignored. Sub-directories are not traversed.</p>
+<p>If the asset directory isn’t defined, its hooks are skipped.</p>
 </div>
 </div>
 <div class="sect2">
 <h3 id="_initramfs"><a class="anchor" href="#_initramfs"></a><a class="link" href="#_initramfs">initramfs</a></h3>
 <div class="paragraph">
-<p>If <code><code>initramfs-tools(7)</code></code> is installed in the chroot, rpi-image-gen extends the support of initramfs scripts and hooks to image and device directories via their sub-directory <code><code>device/initramfs-tools</code></code>. If present, the entire contents of this directory is recursively copied into the chroot. Mode and ownership attributes are preserved. Destination files will not be overwritten. rpi-image-gen performs this operation during the <code><code>customize</code></code> stage of chroot creation and guarantees it will take place after invocation of all image and device bdebstrap <code><code>customize</code></code> hooks.</p>
+<p>If <code>initramfs-tools(7)</code> is installed in the chroot, rpi-image-gen extends the support of <code>initramfs-tools</code> compatible scripts and hooks to image and device directories via their sub-directory <code>device/initramfs-tools</code>. If present, the entire contents of this directory is recursively copied into the chroot. Mode and ownership attributes are preserved. Destination files will not be overwritten. This takes place during the <code>customize</code> stage of chroot creation and after execution of <code>DEVICE_ASSET</code> and <code>IMAGE_ASSET</code> hook bundles.</p>
 </div>
 </div>
 </div>

@@ -2,42 +2,202 @@
 
 set -u
 
-op="$1"
+source "${IGTOP}/lib/common.sh"
+
+add_dir() {
+   local spec=$1 dir
+   if dir=$(map_path "$spec") && [[ -d $dir ]]; then
+      dirs+=("$dir")
+   fi
+}
+
+phase="$1"
 shift 1
 
-# Execute scripts from within these dirs in this order
-dirs=()
-[[ -n ${IGconf_device_assetdir+x} ]] && dirs+=("${IGconf_device_assetdir}/bdebstrap")
-[[ -n ${IGconf_image_assetdir+x} ]] && dirs+=("${IGconf_image_assetdir}/bdebstrap")
-dirs+=("${SRC_DIR}/bdebstrap")
-dirs+=("${IGTOP}/scripts/bdebstrap")
 
-case "$op" in
-   setup|extract|essential|customize|cleanup)
-      for dir in "${dirs[@]}" ; do
-         [[ -d "$dir" ]] || continue
-         if compgen -G "${dir}/${op}*" >/dev/null; then
-            for script in "${dir}/${op}"* ; do
-               s=$(basename "$script")
-               if [ -x "$script" ] ; then
-                  if [[ $s =~ ^[a-zA-Z0-9-]+$ ]] ; then
-                     echo "runner: $dir [run $s]"
-                     env -C "$dir" bash "$s" "$@"
-                     err=$?
-                     if [ $err -ne 0 ] ; then
-                        >&2 echo "runner: $script error ($err)"
-                        exit $err
-                     fi
-                  else
-                     >&2 echo "runner: $dir [skipped $s]"
-                  fi
-               else
-                  >&2 echo "runner: $dir [ignored $s]"
-               fi
-            done
+# Script bundles in these dirs are executed in this order
+dirs=()
+add_dir 'DEVICE_ASSET:bdebstrap'     # device hooks
+add_dir 'IMAGE_ASSET:bdebstrap'      # image hooks
+add_dir 'SRCROOT:bdebstrap'          # source tree hooks
+add_dir 'IGROOT:scripts/bdebstrap'   # built-in hooks
+
+
+# Execute these hooks at the appropriate phase
+declare -A HOOK_PHASES=(
+   [setup]="\
+IGROOT:pre-build.sh \
+IGdevice:pre-build.sh IGimage:pre-build.sh \
+DEVICE_ASSET:pre-build.sh IMAGE_ASSET:pre-build.sh \
+SRCROOT:pre-build.sh"
+
+   [post-build]="\
+IGROOT:post-build.sh \
+IGdevice:post-build.sh IGimage:post-build.sh \
+DEVICE_ASSET:post-build.sh IMAGE_ASSET:post-build.sh \
+SRCROOT:post-build.sh"
+
+   [pre-image]="\
+IGROOT:pre-image.sh \
+IGdevice:pre-image.sh IGimage:pre-image.sh \
+DEVICE_ASSET:pre-image.sh IMAGE_ASSET:pre-image.sh \
+SRCROOT:pre-image.sh"
+
+   [post-image]="\
+IGROOT:post-image.sh \
+IGdevice:post-image.sh IGimage:post-image.sh \
+DEVICE_ASSET:post-image.sh IMAGE_ASSET:post-image.sh \
+SRCROOT:post-image.sh"
+
+   [sbom]='VAR:IGconf_sbom_hook'
+   [deploy]='VAR:IGconf_deploy_hook'
+)
+
+
+# Optional filesystem overlays applied at the appropriate phase
+declare -A FS_OVERLAYS=(
+   [customize]="\
+IMAGE_ASSET:device/rootfs-overlay \
+DEVICE_ASSET:device/rootfs-overlay \
+SRCROOT:rootfs-overlay"
+)
+
+
+# Execution wrapper
+runhook() {
+   local path=$1; shift || true
+   local dir=$(dirname "$path")
+   local name=$(basename "$path")
+
+   if [[ -x $path ]]; then
+      msg "runner: $dir [run $name] [args $@]"
+      env -C "$dir" "./$name" "$@" # honour script shebang
+      local rc=$?
+      [[ $rc -eq 0 ]] || die "runner: $dir/$name ($rc)"
+   else
+      warn "runner: $dir [ignored, non-executable $name]"
+   fi
+}
+
+
+# Apply overlays
+apply_overlays() {
+   local phase=$1 dest=$2
+   [[ -n ${FS_OVERLAYS[$phase]:-} && -d $dest ]] || return 0
+
+   local spec src
+   for spec in ${FS_OVERLAYS[$phase]}; do
+      if src=$(map_path "$spec") && [[ -d $src ]]; then
+         msg "runner: overlay [$src -> $dest]"
+         rsync -a -- "$src"/ "$dest"/
+         local rc=$?
+         [[ $rc -eq 0 ]] || die "runner: error applying overlay ($rc)"
+      fi
+   done
+}
+
+
+# Execute script bundles in all dirs for a given phase
+run_phase_scripts() {
+   local phase=$1; shift || true
+   local dir script s err
+   for dir in "${dirs[@]}"; do
+      [[ -d $dir ]] || continue
+      if compgen -G "${dir}/${phase}"* >/dev/null; then
+         for script in "${dir}/${phase}"*; do
+            s=$(basename "$script")
+            if [[ $s =~ ^[a-zA-Z0-9-]+$ ]]; then
+               runhook "$script" "$@"
+            else
+               warn "runner: $dir [skipped $s]"
+            fi
+         done
+      fi
+   done
+}
+
+
+# Execute hooks for a given phase, support conditional groups
+run_hook_phase() {
+   local phase=$1; shift || true
+   local specs=${HOOK_PHASES[$phase]:-}
+   [[ -n $specs ]] || return 0
+
+   # Latch phase args if there are any. This still allows positional
+   # args if runner gets them.
+   local args=()
+   while IFS= read -r -d '' arg ; do
+      args+=("$arg")
+   done < <(phase_args "$phase")
+   args+=("$@")
+
+   local group spec path
+   for group in $specs; do
+      IFS='|' read -r -a _choices <<< "$group"
+      for spec in "${_choices[@]}"; do
+         path=$(map_path "$spec")
+         if path=$(map_path "$spec" 2>/dev/null) && [[ -f $path ]]; then
+            runhook "$path" "${args[@]}"
+            break
          fi
       done
+   done
+}
+
+
+# per-phase positional arg tweaks
+phase_args() {
+   local phase=$1
+   shift || true
+
+   case $phase in
+      post-build)
+         set -- "$@" "${IGconf_target_path:?"required for $phase"}"
+         ;;
+      pre-image)
+         set -- "$@" "${IGconf_target_path:?"required for $phase"}"
+         set -- "$@" "${IGconf_image_outputdir:?"required for $phase"}"
+         ;;
+      post-image)
+         set -- "$@" "${IGconf_image_outputdir:?"required for $phase"}"
+         ;;
+      sbom)
+         set -- "$@" "${IGconf_target_path:?"required for $phase"}"
+         set -- "$@" "${IGconf_target_dir:?"required for $phase"}"
+         ;;
+      deploy)
+         [[ -n ${IGconf_deploy_dir:-} ]] && set -- "$@" "$IGconf_deploy_dir"
+         ;;
+      *)
+   esac
+   printf '%s\0' "$@"
+}
+
+
+msg "runner: in $phase"
+case "$phase" in
+   setup)
+      run_hook_phase "$phase" "$@"
+      run_phase_scripts "$phase" "$@"
+      ;;
+   customize)
+      run_phase_scripts "$phase" "$@"
+      apply_overlays "$phase" "$@"
+      run_hook_phase "$phase" "$@"
+      ;;
+   extract|essential|cleanup)
+      run_phase_scripts "$phase" "$@"
+      ;;
+   post-build)
+      run_hook_phase "$phase" "$@"
+      ;;
+   pre-image|post-image)
+      run_hook_phase "$phase" "$@"
+      ;;
+   sbom|deploy)
+      run_hook_phase "$phase" "$@"
       ;;
    *)
       ;;
 esac
+msg "runner: out $phase"

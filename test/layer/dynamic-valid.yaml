@@ -1,0 +1,14 @@
+# METABEGIN
+# X-Env-Layer-Name: dynamic-test
+# X-Env-Layer-Desc: Dynamic layer for generator tests
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Category: test
+# X-Env-Layer-Type: dynamic
+# X-Env-Layer-Generator: test-dynamic-generator
+# METAEND
+
+mmdebstrap:
+  suite: trixie
+  variant: minbase
+  mirrors:
+    - deb http://deb.debian.org/debian trixie main

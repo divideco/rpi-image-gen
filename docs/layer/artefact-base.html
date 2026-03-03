@@ -127,14 +127,8 @@
         <p>Base artefact naming, versioning and organisation for
  filesystem builds.</p>
     </div>
-
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
-        
         <p><strong>Required by:</strong></p>
         <div class="deps">
             
@@ -149,17 +143,9 @@
             <a href="target-config.html" class="dep-badge">target-config</a>
             
         </div>
-        
-        
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>artefact</code>):</p>
         <table>
             <thead>
@@ -172,7 +158,6 @@
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_artefact_target_name</code></td>
                     <td>Base name for the bdebstrap target (directory or
@@ -182,18 +167,13 @@
  type affects post-build processing - hooks should handle both directory and
  file targets appropriately.</td>
                     <td>
-                       
-                           
                            <code>filesystem</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_artefact_version</code></td>
                     <td>Version identifier for artefacts. Used as a
@@ -202,18 +182,13 @@
  is used both in the default context name and can be referenced by
  other layers for consistent versioning across artefacts.</td>
                     <td>
-                       
-                           
                            <code class="long-default">$(git describe --tags --always --dirty 2>/dev/null || date +%Y-%m-%d)</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_artefact_context</code></td>
                     <td>Default context name for artefact organisation
@@ -223,30 +198,21 @@
  When image layers are present, the image name takes precedence over this
  context for artefact organisation.</td>
                     <td>
-                       
-                           
                            <code class="long-default">chroot-${IGconf_artefact_version}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>base/artefact-base.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

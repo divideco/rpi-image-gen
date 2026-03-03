@@ -127,19 +127,19 @@
         <p>{{ layer.layer_info.description or 'No description available' }}</p>
     </div>
 
-    {% if layer.companion_html %}
+    {%- if layer.companion_html %}
     <div class="section">
         <h2>Additional Documentation</h2>
         <div class="companion-content">
             {{ layer.companion_html|safe }}
         </div>
     </div>
-    {% endif %}
+    {%- endif %}
 
-    {% if layer.dependencies.static_dep or layer.dependencies.dyn_dep or layer.reverse_dependencies or layer.layer_info.provides or layer.layer_info.provider_requires %}
+    {%- if layer.dependencies.static_dep or layer.dependencies.dyn_dep or layer.reverse_dependencies or layer.layer_info.provides or layer.layer_info.provider_requires %}
     <div class="section">
         <h2>Relationships</h2>
-        {% if layer.dependencies.static_dep or layer.dependencies.dyn_dep %}
+        {%- if layer.dependencies.static_dep or layer.dependencies.dyn_dep %}
         <p><strong>Depends on:</strong></p>
         <div class="deps">
             {%- for dep in layer.dependencies.static_dep %}
@@ -149,35 +149,35 @@
             <span class="dep-badge" style="background: #6c757d; cursor: default;" title="Dynamic dependency (contains environment variables)">{{ dep }}</span>
             {%- endfor %}
         </div>
-        {% endif %}
-        {% if layer.reverse_dependencies %}
+        {%- endif %}
+        {%- if layer.reverse_dependencies %}
         <p><strong>Required by:</strong></p>
         <div class="deps">
             {% for dep in layer.reverse_dependencies %}
             <a href="{{ dep }}.html" class="dep-badge">{{ dep }}</a>
             {% endfor %}
         </div>
-        {% endif %}
-        {% if layer.layer_info.provides %}
+        {%- endif %}
+        {%- if layer.layer_info.provides %}
         <p><strong>Provides:</strong> {{ layer.layer_info.provides|join(', ') }}</p>
-        {% endif %}
-        {% if layer.layer_info.provider_requires %}
+        {%- endif %}
+        {%- if layer.layer_info.provider_requires %}
         <p><strong>Requires Provider:</strong> {{ layer.layer_info.provider_requires|join(', ') }}</p>
-        {% endif %}
+        {%- endif %}
     </div>
-    {% endif %}
+    {%- endif %}
 
-    {% if layer.variables or layer.required_variables %}
+    {%- if layer.variables or layer.required_variables %}
     <div class="section">
         <h2>Configuration Variables</h2>
-        {% if layer.required_variables %}
+        {%- if layer.required_variables %}
         <p><strong>References:</strong>
-        {% for var_ref in layer.required_variables %}
+        {%- for var_ref in layer.required_variables %}
         <code>{{ var_ref }}</code>{% if not loop.last %}, {% endif %}
-        {% endfor %}
+        {%- endfor %}
         </p>
-        {% endif %}
-        {% if layer.variables %}
+        {%- endif %}
+        {%- if layer.variables %}
         <p><strong>Declares</strong>{% if layer.variable_prefix %} (prefix: <code>{{ layer.variable_prefix }}</code>){% endif %}:</p>
         <table>
             <thead>
@@ -190,38 +190,62 @@
                 </tr>
             </thead>
             <tbody>
-                {% for var_name, var in layer.variables.items() %}
+                {%- for var_name, var in layer.variables.items() %}
                 <tr>
                     <td><code>{{ var.name }}</code></td>
                     <td>{{ var.description or 'No description' }}</td>
                     <td>
-                       {% if var.original_value %}
-                           {% if var.original_value|length > 25 %}
+                       {%- if var.original_value %}
+                           {%- if var.original_value|length > 25 %}
                            <code class="long-default">{{ var.original_value }}</code>
-                           {% else %}
+                           {%- else %}
                            <code>{{ var.original_value }}</code>
-                           {% endif %}
-                       {% elif var.set_policy == 'skip' %}
+                           {%- endif %}
+                       {%- elif var.set_policy == 'skip' %}
                            <code>&lt;disabled&gt;</code>
-                       {% elif var.validation_description and 'empty' in var.validation_description.lower() %}
+                       {%- elif var.validation_description and 'empty' in var.validation_description.lower() %}
                            <code>&lt;empty&gt;</code>
-                       {% else %}
+                       {%- else %}
                            <code>&lt;not set&gt;</code>
-                       {% endif %}
+                       {%- endif %}
                     </td>
                     <td>{{ var.validation_description or 'None' }}</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-{{ var.set_policy }}" title="Click for policy and validation help">{{ var.set_policy }}</a>
                     </td>
                 </tr>
-                {% endfor %}
+                {%- endfor %}
             </tbody>
         </table>
-        {% endif %}
+        {%- endif %}
     </div>
-    {% endif %}
+    {%- endif %}
 
-    {% if (
+    {%- if layer.anchors %}
+    <div class="section">
+        <h2>Anchors</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Anchor</th>
+                    <th>Variable</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                {%- for anchor in layer.anchors %}
+                <tr>
+                    <td><code>{{ anchor.name }}</code></td>
+                    <td><code>{{ anchor.variable }}</code></td>
+                    <td>{{ anchor.description or 'No description' }}</td>
+                </tr>
+                {%- endfor %}
+            </tbody>
+        </table>
+    </div>
+    {%- endif %}
+
+    {%- if (
        layer.mmdebstrap.get('packages') or
        layer.mmdebstrap.get('mirrors') or
        layer.mmdebstrap.get('suite') or
@@ -233,97 +257,97 @@
     <div class="section">
         <h2>mmdebstrap</h2>
 
-        {% if layer.mmdebstrap.get('suite') %}
+        {%- if layer.mmdebstrap.get('suite') %}
         {% set suite = layer.mmdebstrap.suite %}
         <h3>Suite</h3>
-        {% if suite is string %}
+        {%- if suite is string %}
         <ul>
             <li><code>{{ suite }}</code></li>
         </ul>
-        {% else %}
+        {%- else %}
         <ul>
-            {% for s in suite %}
+            {%- for s in suite %}
             <li><code>{{ s }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
-        {% endif %}
+        {%- endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('variant') %}
+        {%- if layer.mmdebstrap.get('variant') %}
         {% set variant = layer.mmdebstrap.variant %}
         <h3>Variant</h3>
         <p>Installs package set:</p>
-        {% if variant is string %}
+        {%- if variant is string %}
         <ul>
             <li><code>{{ variant }}</code></li>
         </ul>
-        {% else %}
+        {%- else %}
         <ul>
-            {% for v in variant %}
+            {%- for v in variant %}
             <li><code>{{ v }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
-        {% endif %}
+        {%- endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('architectures') %}
+        {%- if layer.mmdebstrap.get('architectures') %}
         {% set architectures = layer.mmdebstrap.architectures %}
         <h3>Architectures</h3>
-        {% if architectures is string %}
+        {%- if architectures is string %}
         <ul>
             <li><code>{{ architectures }}</code></li>
         </ul>
-        {% else %}
+        {%- else %}
         <ul>
-            {% for arch in architectures %}
+            {%- for arch in architectures %}
             <li><code>{{ arch }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
-        {% endif %}
+        {%- endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('packages') %}
+        {%- if layer.mmdebstrap.get('packages') %}
         {% set packages = layer.mmdebstrap.packages %}
         <h3>Packages</h3>
         <p>Installs:</p>
         <ul>
-            {% for package in packages %}
+            {%- for package in packages %}
             <li><code>{{ package }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('mirrors') %}
+        {%- if layer.mmdebstrap.get('mirrors') %}
         {% set mirrors = layer.mmdebstrap.mirrors %}
         <h3>Mirrors</h3>
         <ul>
-            {% for mirror in mirrors %}
+            {%- for mirror in mirrors %}
             <li><code>{{ mirror }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('dpkgopts') %}
+        {%- if layer.mmdebstrap.get('dpkgopts') %}
         {% set dpkgopts = layer.mmdebstrap.dpkgopts %}
         <h3>dpkgopts</h3>
         <ul>
-            {% for opt in dpkgopts %}
+            {%- for opt in dpkgopts %}
             <li><code>{{ opt }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
+        {%- endif %}
 
-        {% if layer.mmdebstrap.get('aptopts') %}
+        {%- if layer.mmdebstrap.get('aptopts') %}
         {% set aptopts = layer.mmdebstrap.aptopts %}
         <h3>aptopts</h3>
         <ul>
-            {% for opt in aptopts %}
+            {%- for opt in aptopts %}
             <li><code>{{ opt }}</code></li>
-            {% endfor %}
+            {%- endfor %}
         </ul>
-        {% endif %}
+        {%- endif %}
     </div>
-    {% endif %}
+    {%- endif %}
 
     {%- if layer.env %}
     <div class="section">
@@ -337,12 +361,12 @@
                 </tr>
             </thead>
             <tbody>
-                {% for env_var, env_value in layer.env.items() %}
+                {%- for env_var, env_value in layer.env.items() %}
                 <tr>
                     <td><code>{{ env_var }}</code></td>
                     <td><code>{{ env_value }}</code></td>
                 </tr>
-                {% endfor %}
+                {%- endfor %}
             </tbody>
         </table>
     </div>
@@ -351,9 +375,13 @@
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>{{ layer.file_path }}</code></p>
-        {% if layer.layer_info.conflicts %}
+        <p><strong>Type:</strong> <code>{{ layer.layer_info.type }}</code></p>
+        {%- if layer.layer_info.type == 'dynamic' and layer.layer_info.generator %}
+        <p><strong>Generator:</strong> <code>{{ layer.layer_info.generator }}</code></p>
+        {%- endif %}
+        {%- if layer.layer_info.conflicts %}
         <p><strong>Conflicts:</strong> {{ layer.layer_info.conflicts|join(', ') }}</p>
-        {% endif %}
+        {%- endif %}
     </div>
 </body>
 </html>

@@ -1,0 +1,8 @@
+env:
+  DEBIAN_SNAPSHOT_TS: 1763641344
+
+artefact:
+  target_name: trixie-reproducible.tgz
+
+layer:
+  base: example-minbase-snaphot

@@ -39,6 +39,6 @@
 #  Root partition will be provisioned encrypted (crypt).
 # X-Env-Var-pmap-Required: n
 # X-Env-Var-pmap-Valid: clear,crypt
-# X-Env-Var-pmap-Set: y
+# X-Env-Var-pmap-Set: force
 # METAEND
 ---

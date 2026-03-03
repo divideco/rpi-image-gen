@@ -127,31 +127,16 @@
         <p>Raspberry Pi OS style image layout with MBR, vfat
  boot partition, and a root partition that can be ext4 or btrfs.</p>
     </div>
-
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
         <p><strong>Depends on:</strong></p>
         <div class="deps">
             <a href="image-base.html" class="dep-badge">image-base</a>
         </div>
-        
-        
-        
         <p><strong>Provides:</strong> image</p>
-        
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>image</code>):</p>
         <table>
             <thead>
@@ -164,101 +149,71 @@
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_image_rootfs_type</code></td>
                     <td>Root filesystem type.</td>
                     <td>
-                       
-                           
                            <code>ext4</code>
-                           
-                       
                     </td>
                     <td>Must be one of: ext4, btrfs</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_boot_part_size</code></td>
                     <td>Boot partition size</td>
                     <td>
-                       
-                           
                            <code>100%</code>
-                           
-                       
                     </td>
                     <td>Size value with optional unit (bytes, k/m/g/s) or percentage</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_root_part_size</code></td>
                     <td>Root partition size</td>
                     <td>
-                       
-                           
                            <code>100%</code>
-                           
-                       
                     </td>
                     <td>Size value with optional unit (bytes, k/m/g/s) or percentage</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_assetdir</code></td>
                     <td>Image specific asset directory</td>
                     <td>
-                       
-                           
                            <code>${DIRECTORY}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_pmap</code></td>
                     <td>Provisioning Map identifier for this image layout.
  All partitions will be provisioned unencrypted (clear).
  Root partition will be provisioned encrypted (crypt).</td>
                     <td>
-                       
-                           
                            <code>clear</code>
-                           
-                       
                     </td>
                     <td>Must be one of: clear, crypt</td>
                     <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
+                        <a href="variable-validation.html#set-policies" class="badge policy-force" title="Click for policy and validation help">force</a>
                     </td>
                 </tr>
-                
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>mbr/simple_dual/image.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

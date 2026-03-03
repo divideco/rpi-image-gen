@@ -60,4 +60,14 @@
 # X-Env-Var-syft_config-Valid: string
 # X-Env-Var-syft_config-Set: lazy
 #
+# X-Env-Var-syft_source:
+# X-Env-Var-syft_source-Desc: Source specifier syft will use as its input for
+#  scanning. Will be determined automatically if empty based on the output
+#  target.
+#  For further information regarding syft scan sources, refer to
+#  https://github.com/anchore/syft/wiki/supported-sources
+# X-Env-Var-syft_source-Required: n
+# X-Env-Var-syft_source-Valid: string-or-empty
+# X-Env-Var-syft_source-Set: lazy
+#
 ---

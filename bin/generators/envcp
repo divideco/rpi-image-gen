@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -eu
+
+if [[ -n ${DEBIAN_SNAPSHOT_TS:-} ]]; then
+   snapshot=$(date -u -d @"$DEBIAN_SNAPSHOT_TS" +%Y%m%dT%H%M%SZ)
+else
+   snapshot=$(date -u +%Y%m%dT%H%M%SZ)
+fi
+
+cat "$1" | sed \
+   -e "s|<SNAPSHOT>|$snapshot|g" \
+   > "$2"

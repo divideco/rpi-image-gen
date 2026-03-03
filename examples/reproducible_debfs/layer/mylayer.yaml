@@ -1,0 +1,33 @@
+# METABEGIN
+# X-Env-Layer-Name: example-minbase-snaphot
+# X-Env-Layer-Category: example
+# X-Env-Layer-Desc: Architecture agnostic Debian Trixie minbase snapshot
+#  providing a reproducible base.
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Type: dynamic
+# X-Env-Layer-Generator: envcp
+# METAEND
+mmdebstrap:
+  suite: trixie
+  variant: minbase
+  mirrors:
+    - deb http://snapshot.debian.org/archive/debian/<SNAPSHOT> trixie main contrib non-free non-free-firmware
+    - deb http://snapshot.debian.org/archive/debian-security/<SNAPSHOT> trixie-security main contrib non-free non-free-firmware
+  setup-hooks:
+    - mkdir -p $1/etc/apt/apt.conf.d
+    - |-
+      cat <<- EOF > $1/etc/apt/apt.conf.d/snapshot.conf
+      Acquire::Check-Valid-Until "false" ;
+      EOF
+  cleanup-hooks:
+    - |-
+      set -e
+      rm -f $1/etc/apt/apt.conf.d/snapshot.conf
+      cat <<- EOF > $1/etc/apt/sources.list
+      # Origin
+      # deb http://snapshot.debian.org/archive/debian/<SNAPSHOT> trixie main contrib non-free non-free-firmware
+      # deb http://snapshot.debian.org/archive/debian-security/<SNAPSHOT> trixie-security main contrib non-free non-free-firmware
+      deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+      deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
+      deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
+      EOF

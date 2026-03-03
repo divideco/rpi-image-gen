@@ -1,0 +1,43 @@
+# Registry of build variable defaults. These are seeded before config parsing.
+# User config, cmdline or layers can override. Policy rules do not apply here.
+# Format: X-Env-Var DEB822
+# Validate: metadata --lint
+# Validation types:
+# https://raspberrypi.github.io/rpi-image-gen/layer/variable-validation.html
+
+
+#
+# Tooling
+#
+X-Env-Var-IG_ENABLE_HOST_BDEBSTRAP: y
+X-Env-Var-IG_ENABLE_HOST_BDEBSTRAP-Desc: Build and install bdebstrap for the
+ host. Mission critical.
+X-Env-Var-IG_ENABLE_HOST_BDEBSTRAP-Valid: bool
+X-Env-Var-IG_ENABLE_HOST_BDEBSTRAP-Set: y
+
+
+X-Env-Var-IG_ENABLE_HOST_GENIMAGE: n
+X-Env-Var-IG_ENABLE_HOST_GENIMAGE-Desc: Build and install genimage for the
+ host. Image creation only.
+X-Env-Var-IG_ENABLE_HOST_GENIMAGE-Valid: bool
+X-Env-Var-IG_ENABLE_HOST_GENIMAGE-Set: y
+
+
+#
+# Device
+#
+X-Env-Var-IG_DEVICE_KERNEL_PAGE_SIZE: 4K
+X-Env-Var-IG_DEVICE_KERNEL_PAGE_SIZE-Desc: Page size of the linux kernel.
+ Influences filesystem image creation parameters including block size. May also
+ be used to tune other image attributes to match the target kernel.
+X-Env-Var-IG_DEVICE_KERNEL_PAGE_SIZE-Required: n
+X-Env-Var-IG_DEVICE_KERNEL_PAGE_SIZE-Valid: 4K,16K
+X-Env-Var-IG_DEVICE_KERNEL_PAGE_SIZE-Set: y
+
+
+X-Env-Var-IG_DEVICE_PARTITION_ALIGNMENT: 8M
+X-Env-Var-IG_DEVICE_PARTITION_ALIGNMENT-Desc: Alignment boundary for disk
+ partitions. Ensures partition start offsets are aligned to this value for
+ optimal I/O performance on the target storage device.
+X-Env-Var-IG_DEVICE_PARTITION_ALIGNMENT-Valid: capacity
+X-Env-Var-IG_DEVICE_PARTITION_ALIGNMENT-Set: y

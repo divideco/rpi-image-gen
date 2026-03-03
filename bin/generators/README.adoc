@@ -1,0 +1,20 @@
+= Generator Scripts
+
+== Purpose
+
+Helper scripts in this directory are invoked by the layer manager when a layer declares `X-Env-Layer-Type: dynamic`. Each generator reads a template layer file (`$1`) and writes the rendered result to the output file path (`$2`). This is a reference for each script. The layer manager guarantees that the input file and parent directory of the output file are valid.
+
+== Available Generators
+
+[cols="1,4,4", options="header"]
+|===
+| Script | Purpose   | Notes
+| envcp  | `<PLACEHOLDER>` replacement using environment variables | If `DEBIAN_SNAPSHOT_TS` is unset, `<SNAPSHOT>` is derived from the current UTC time.
+|===
+
+
+== Adding New Generators
+
+1. Drop the executable script in this directory.
+2. Document it in the table above.
+

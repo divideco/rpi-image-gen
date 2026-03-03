@@ -1,0 +1,9 @@
+# METABEGIN
+# X-Env-Layer-Name: dynamic-missing
+# X-Env-Layer-Desc: Missing generator declaration
+# X-Env-Layer-Type: dynamic
+# METAEND
+
+mmdebstrap:
+  suite: trixie
+  variant: minbase

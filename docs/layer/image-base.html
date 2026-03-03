@@ -123,11 +123,9 @@
     <div class="header">
         <h1>image-base</h1>
         <span class="badge">image</span>
-        <span class="badge">v1.0.0</span>
+        <span class="badge">v2.0.2</span>
         <p>Default image settings and build attributes.</p>
     </div>
-
-    
     <div class="section">
         <h2>Additional Documentation</h2>
         <div class="companion-content">
@@ -187,12 +185,8 @@ Unless otherwise stated, the following apply to all image layers:</p>
 
         </div>
     </div>
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
         <p><strong>Depends on:</strong></p>
         <div class="deps">
             <a href="sys-build-base.html" class="dep-badge">sys-build-base</a>
@@ -201,8 +195,6 @@ Unless otherwise stated, the following apply to all image layers:</p>
             <a href="artefact-base.html" class="dep-badge">artefact-base</a>
             <a href="deploy-base.html" class="dep-badge">deploy-base</a>
         </div>
-        
-        
         <p><strong>Required by:</strong></p>
         <div class="deps">
             
@@ -211,27 +203,14 @@ Unless otherwise stated, the following apply to all image layers:</p>
             <a href="image-rpios.html" class="dep-badge">image-rpios</a>
             
         </div>
-        
-        
-        
         <p><strong>Requires Provider:</strong> device</p>
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
         <p><strong>References:</strong>
-        
         <code>IGconf_sys_workroot</code>, 
-        
         <code>IGconf_artefact_version</code>
-        
         </p>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>image</code>):</p>
         <table>
             <thead>
@@ -244,245 +223,134 @@ Unless otherwise stated, the following apply to all image layers:</p>
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_image_suffix</code></td>
                     <td>The base suffix of generated raw image(s)</td>
                     <td>
-                       
-                           
                            <code>img</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_compression</code></td>
-                    <td>Identifier for the compression scheme used when
- deploying image assets.</td>
+                    <td>Compression scheme for generating image assets.
+ Downstream layer implementation-dependent. For example, a downstream layer
+ may define available schemes when creating filesystem images (e.g. erofs,
+ squashfs).</td>
                     <td>
-                       
-                           
                            <code>none</code>
-                           
-                       
                     </td>
-                    <td>Must be one of: none, zstd</td>
+                    <td>Non-empty string value</td>
                     <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
+                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_version</code></td>
                     <td>Version string of generated images. This always maps
  to the artefact version.</td>
                     <td>
-                       
-                           
                            <code class="long-default">${IGconf_artefact_version}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-force" title="Click for policy and validation help">force</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_name</code></td>
                     <td>The base name for all generated images</td>
                     <td>
-                       
-                           
                            <code class="long-default">rpi-${IGconf_image_version}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_pmap</code></td>
                     <td>Set the identifier string for the image Provisioning
- Map. The Provisioning Map defines how the image will be provisioned on the
- device for which it's intended. The pmap is an extension of the Image
- Description JSON file generated by the build. Providing a pmap is optional,
- but it is mandatory for provisioning the image using Raspberry Pi tools.</td>
+ Map (PMAP). The PMAP file defines how the image will be provisioned on the
+ device for which it's intended. The PMAP is part of the Image Description
+ JSON file generated by the build. Providing a PMAP is optional, but is
+ mandatory for provisioning the image using Raspberry Pi tools.</td>
                     <td>
-                       
                            <code>&lt;empty&gt;</code>
-                       
                     </td>
                     <td>String value (may be empty)</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
+                <tr>
+                    <td><code>IGconf_image_pmap_schema</code></td>
+                    <td>Image Description PMAP schema for validation</td>
+                    <td>
+                           <code class="long-default">${DIRECTORY}/schemas/provisionmap/v1/schema.json</code>
+                    </td>
+                    <td>Non-empty string value</td>
+                    <td>
+                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
+                    </td>
+                </tr>
                 <tr>
                     <td><code>IGconf_image_outputdir</code></td>
                     <td>Location of all image build artefacts.</td>
                     <td>
-                       
-                           
                            <code class="long-default">${IGconf_sys_workroot}/image-${IGconf_image_name}</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_provider</code></td>
                     <td>Image generation provider</td>
                     <td>
-                       
-                           
                            <code>genimage</code>
-                           
-                       
                     </td>
                     <td>Must be one of: genimage</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_image_assetdir</code></td>
                     <td>Image specific asset location. Use this directory
  to hold image provider templates, geometry configuration, overlays, etc
  particular to the image layout.</td>
                     <td>
-                       
-                           
                            <code>/dev/null</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
-                    <td><code>IGconf_image_pmapfile</code></td>
-                    <td>Full path to the Provisioning Map file. When
- IGconf_image_pmap is specified, this provides the complete path to the pmap
- file. If no pmap identifier is set, this variable remains empty.</td>
+                    <td><code>IGconf_image_rootfs_type</code></td>
+                    <td>Root filesystem type. Implementation-dependent.</td>
                     <td>
-                       
-                           
-                           <code class="long-default">${IGconf_image_pmap:+${IGconf_image_assetdir}/device/provisionmap-${IGconf_image_pmap}.json}</code>
-                           
-                       
-                    </td>
-                    <td>String value (may be empty)</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_image_prebuild</code></td>
-                    <td>Pre-build hook. If found and executable, this script
- will be executed from its parent directory before the filesystem build
- commences.
- Example use: Image specific pre-build validation</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_image_assetdir}/pre-build.sh</code>
-                           
-                       
+                           <code>none</code>
                     </td>
                     <td>Non-empty string value</td>
                     <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
+                        <a href="variable-validation.html#set-policies" class="badge policy-skip" title="Click for policy and validation help">skip</a>
                     </td>
                 </tr>
-                
-                <tr>
-                    <td><code>IGconf_image_postbuild</code></td>
-                    <td>Post-build hook. If found and executable, this script
- will be executed from its parent directory after the filesystem build has
- completed.
- Example use: Installation of image specific assets</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_image_assetdir}/post-build.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_image_preimage</code></td>
-                    <td>Pre-image hook. If found and executable, this script
- will executed from its parent directory before image creation commences.
- Example use: Creation of genimage templates</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_image_assetdir}/pre-image.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_image_postimage</code></td>
-                    <td>Post-image hook. If found and executable, this script
- will be executed from its parent directory after image creation has
- completed.</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_image_assetdir}/post-image.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>base/image-base.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

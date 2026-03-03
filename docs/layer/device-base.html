@@ -123,17 +123,11 @@
     <div class="header">
         <h1>device-base</h1>
         <span class="badge">device</span>
-        <span class="badge">v1.2.0</span>
+        <span class="badge">v1.3.1</span>
         <p>Device defaults.</p>
     </div>
-
-    
-
-    
     <div class="section">
         <h2>Relationships</h2>
-        
-        
         <p><strong>Required by:</strong></p>
         <div class="deps">
             
@@ -146,19 +140,10 @@
             <a href="rpi5.html" class="dep-badge">rpi5</a>
             
         </div>
-        
-        
-        
         <p><strong>Requires Provider:</strong> device</p>
-        
     </div>
-    
-
-    
     <div class="section">
         <h2>Configuration Variables</h2>
-        
-        
         <p><strong>Declares</strong> (prefix: <code>device</code>):</p>
         <table>
             <thead>
@@ -171,72 +156,51 @@
                 </tr>
             </thead>
             <tbody>
-                
                 <tr>
                     <td><code>IGconf_device_class</code></td>
                     <td>Raspberry Pi device</td>
                     <td>
-                       
-                           
                            <code>pi5</code>
-                           
-                       
                     </td>
                     <td>Must be one of: zero2w, pi4, cm4, pi5, cm5</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_variant</code></td>
                     <td>Raspberry Pi device variant, eg 8G, lite, ..</td>
                     <td>
-                       
-                           
                            <code>none</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_hostname</code></td>
                     <td>Sets the network hostname for the device</td>
                     <td>
-                       
-                           
                            <code class="long-default">${IGconf_device_class}-$(tr -dc 'a-z' < /dev/urandom | head -c 6)</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_user1</code></td>
                     <td>A user account with this name will be created on the
  device.</td>
                     <td>
-                       
-                           
                            <code>pi</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_user1pass</code></td>
                     <td>Password required to log into the user1 account. If
@@ -247,154 +211,63 @@
  At least one digit.
  At least one special character from @$!%*?&</td>
                     <td>
-                       
                            <code>&lt;disabled&gt;</code>
-                       
                     </td>
                     <td>Must match regex pattern: ^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-skip" title="Click for policy and validation help">skip</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_storage_type</code></td>
-                    <td>Device storage media type.</td>
+                    <td>Declares the storage media the image is intended
+ for, as seen by the OS. For example, an NVMe backed disk connected via USB
+ would be usb, not nvme. Whether this restricts where the image can be written
+ to or booted from depends on downstream layers. This may seed the configuration
+ and behaviour of run-time boot media detection, device provisioning, etc.</td>
                     <td>
-                       
-                           
                            <code>sd</code>
-                           
-                       
                     </td>
-                    <td>Must be one of: sd, emmc, nvme</td>
+                    <td>Must be one of: sd, emmc, nvme, usb</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_sector_size</code></td>
-                    <td>Logical sector size of the device storage for which
- the image is intended. The output raw image file size will be a multiple of
- this value.</td>
+                    <td>Logical sector size (in bytes) of the target storage
+ device. Used to guide image layout decisions (e.g. alignment, padding, and
+ sector-based structure placement) so the image matches the intended media.
+ Common values: 512 (for 512n/512e) or 4096 (for 4Kn).</td>
                     <td>
-                       
-                           
                            <code>512</code>
-                           
-                       
                     </td>
-                    <td>Storage capacity: bytes (512+) or binary units (K, M, G, T, KiB, MiB, etc.)</td>
+                    <td>Integer value in range 512 to 512</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-immediate" title="Click for policy and validation help">immediate</a>
                     </td>
                 </tr>
-                
                 <tr>
                     <td><code>IGconf_device_assetdir</code></td>
                     <td>Device specific asset location. Use this directory
  to hold configuration files, scripts, certificates, Device Tree source, wifi
  regulatory domains, firmware blobs, overlays, etc particular to the device.</td>
                     <td>
-                       
-                           
                            <code>/dev/null</code>
-                           
-                       
                     </td>
                     <td>Non-empty string value</td>
                     <td>
                         <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
                     </td>
                 </tr>
-                
-                <tr>
-                    <td><code>IGconf_device_prebuild</code></td>
-                    <td>Pre-build hook. If found and executable, this script
- will be executed from its parent directory before the filesystem build
- commences.
- Example use: Device specific pre-build validation</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_device_assetdir}/pre-build.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_device_postbuild</code></td>
-                    <td>Post-build hook. If found and executable, this script
- will be executed from its parent directory after the filesystem build has
- completed.
- Example use: Installation of device specific assets</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_device_assetdir}/post-build.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_device_preimage</code></td>
-                    <td>Pre-image hook. If found and executable, this script
- will executed from its parent directory before image creation commences.</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_device_assetdir}/pre-image.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
-                <tr>
-                    <td><code>IGconf_device_postimage</code></td>
-                    <td>Post-image hook. If found and executable, this script
- will be executed from its parent directory after image creation has
- completed.
- Example use: Signing image assets with device specific keys.</td>
-                    <td>
-                       
-                           
-                           <code class="long-default">${IGconf_device_assetdir}/post-image.sh</code>
-                           
-                       
-                    </td>
-                    <td>Non-empty string value</td>
-                    <td>
-                        <a href="variable-validation.html#set-policies" class="badge policy-lazy" title="Click for policy and validation help">lazy</a>
-                    </td>
-                </tr>
-                
             </tbody>
         </table>
-        
     </div>
-    
-
-    
 
     <div class="section">
         <h2>Attributes</h2>
         <p><strong>File:</strong> <code>base/device-base.yaml</code></p>
-        
+        <p><strong>Type:</strong> <code>static</code></p>
     </div>
 </body>
 </html>

@@ -2,7 +2,7 @@
 # X-Env-Layer-Name: device-base
 # X-Env-Layer-Category: device
 # X-Env-Layer-Desc: Device defaults.
-# X-Env-Layer-Version: 1.2.0
+# X-Env-Layer-Version: 1.3.1
 # X-Env-Layer-Requires:
 # X-Env-Layer-RequiresProvider: device
 #
@@ -48,17 +48,22 @@
 # X-Env-Var-user1pass-Set: n
 #
 # X-Env-Var-storage_type: sd
-# X-Env-Var-storage_type-Desc: Device storage media type.
+# X-Env-Var-storage_type-Desc: Declares the storage media the image is intended
+#  for, as seen by the OS. For example, an NVMe backed disk connected via USB
+#  would be usb, not nvme. Whether this restricts where the image can be written
+#  to or booted from depends on downstream layers. This may seed the configuration
+#  and behaviour of run-time boot media detection, device provisioning, etc.
 # X-Env-Var-storage_type-Required: n
-# X-Env-Var-storage_type-Valid: sd,emmc,nvme
+# X-Env-Var-storage_type-Valid: sd,emmc,nvme,usb
 # X-Env-Var-storage_type-Set: lazy
 #
 # X-Env-Var-sector_size: 512
-# X-Env-Var-sector_size-Desc: Logical sector size of the device storage for which
-#  the image is intended. The output raw image file size will be a multiple of
-#  this value.
+# X-Env-Var-sector_size-Desc: Logical sector size (in bytes) of the target storage
+#  device. Used to guide image layout decisions (e.g. alignment, padding, and
+#  sector-based structure placement) so the image matches the intended media.
+#  Common values: 512 (for 512n/512e) or 4096 (for 4Kn).
 # X-Env-Var-sector_size-Required: n
-# X-Env-Var-sector_size-Valid: capacity
+# X-Env-Var-sector_size-Valid: int:512-512
 # X-Env-Var-sector_size-Set: y
 #
 # X-Env-Var-assetdir: /dev/null
@@ -68,40 +73,6 @@
 # X-Env-Var-assetdir-Required: n
 # X-Env-Var-assetdir-Valid: string
 # X-Env-Var-assetdir-Set: lazy
-#
-# X-Env-Var-prebuild: ${IGconf_device_assetdir}/pre-build.sh
-# X-Env-Var-prebuild-Desc: Pre-build hook. If found and executable, this script
-#  will be executed from its parent directory before the filesystem build
-#  commences.
-#  Example use: Device specific pre-build validation
-# X-Env-Var-prebuild-Required: n
-# X-Env-Var-prebuild-Valid: string
-# X-Env-Var-prebuild-Set: lazy
-#
-# X-Env-Var-postbuild: ${IGconf_device_assetdir}/post-build.sh
-# X-Env-Var-postbuild-Desc: Post-build hook. If found and executable, this script
-#  will be executed from its parent directory after the filesystem build has
-#  completed.
-#  Example use: Installation of device specific assets
-# X-Env-Var-postbuild-Required: n
-# X-Env-Var-postbuild-Valid: string
-# X-Env-Var-postbuild-Set: lazy
-#
-# X-Env-Var-preimage: ${IGconf_device_assetdir}/pre-image.sh
-# X-Env-Var-preimage-Desc: Pre-image hook. If found and executable, this script
-#  will executed from its parent directory before image creation commences.
-# X-Env-Var-preimage-Required: n
-# X-Env-Var-preimage-Valid: string
-# X-Env-Var-preimage-Set: lazy
-#
-# X-Env-Var-postimage: ${IGconf_device_assetdir}/post-image.sh
-# X-Env-Var-postimage-Desc: Post-image hook. If found and executable, this script
-#  will be executed from its parent directory after image creation has
-#  completed.
-#  Example use: Signing image assets with device specific keys.
-# X-Env-Var-postimage-Required: n
-# X-Env-Var-postimage-Valid: string
-# X-Env-Var-postimage-Set: lazy
 #
 # METAEND
 ---

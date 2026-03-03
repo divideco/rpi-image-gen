@@ -118,65 +118,6 @@ mapfile_kv() {
 }
 
 
-# One way key check in file
-check_missing_keys() {
-   local needles="$1" haystack="$2"
-
-   [[ $# -eq 2 && -f "$needles" && -f "$haystack" ]] || {
-       die "Need <needles> and <haystack>"
-   }
-
-   # Look in here...
-   declare -A haystack_keys
-   gather_haystack() { haystack_keys["$1"]=1; }
-   mapfile_kv "$haystack" gather_haystack
-
-   # ...for these.
-   local missing=()
-   find_needle() { [[ -z "${haystack_keys[$1]:-}" ]] && missing+=("$1"); }
-   mapfile_kv "$needles" find_needle
-
-   if [[ ${#missing[@]} -gt 0 ]]; then
-       echo "Keys from '$needles' not found in '$haystack':"
-       printf ' %s\n' "${missing[@]}"
-       return 1
-   fi
-
-   return 0
-}
-
-
-# Execute file in a directory with supplied env
-runhook() {
-   local hook_path=${1:-};  shift
-   local env_file=$1;   shift
-
-   [[ -r $env_file ]] || die "runhook: env file '$env_file' not found or unreadable"
-
-   # No hook - no problem
-   [[ -n $hook_path && -e $hook_path ]] || return 0
-
-   local hook_dir hook_name
-   hook_dir=$(dirname  "$hook_path")
-   hook_name=$(basename "$hook_path")
-
-   if [[ ! -x $hook_path ]]; then
-      warn "Hook not executable: [$hook_dir/$hook_name] - skipping"
-      return 0
-   fi
-
-   msg "$hook_dir"["$hook_name"] "$@"
-
-   runenv  "$env_file" \
-      -C "$hook_dir" \
-      podman unshare "./$hook_name" "$@"
-
-   local ret=$?
-   [[ $ret -ne 0 ]] && die "Hook [$hook_dir/$hook_name] ($ret)"
-   return $ret
-}
-
-
 # ask <prompt> [<default>]
 # default: y or n   (case-insensitive). If omitted -> ‘y’.
 ask () {
@@ -204,4 +145,103 @@ ask () {
       esac
       echo "Please answer yes or no."
    done
+}
+
+
+# Translates logical asset namespaces into real paths at execution time.
+# This is the central namespace path resolver for the build system. Rather than
+# using hard‑coded absolute paths, logical specs are used to translate
+# them at runtime. This makes hooks, overlays, layer paths etc portable, eg
+# between (host) bootstrap and (container) build.
+map_path() {
+   local raw=$1
+   [[ $raw == *:* ]] || { printf '%s\n' "$raw"; return 0; }
+
+   local tag=${raw%%:*}
+   local rest=${raw#*:}
+   local base
+
+   # Handler for variable or spec inside a variable
+   if [[ $raw == VAR:* ]]; then
+      local ref=${raw#VAR:}
+      if [[ -z ${!ref+x} ]]; then
+         return 1 # var not set -> ignore
+      fi
+      local val=${!ref}
+      [[ -n $val ]] || return 1 # set but empty -> ignore
+
+      if [[ $val == *:* ]]; then
+         map_path "$val" # Yielded a spec so recurse to resolve
+      else
+         printf '%s\n' "$val"
+      fi
+      return 0
+   fi
+
+   case $tag in
+      IGROOT)
+         base=${IGTOP:?"IGTOP not set for $raw"}
+         ;;
+      SRCROOT)
+         [[ -n ${SRCROOT:-} ]] || return 1
+         base=$SRCROOT
+         ;;
+      IG*)
+         base="${IGTOP}/${tag#IG}"
+         ;;
+      SRC*)
+         [[ -n ${SRCROOT:-} ]] || return 1
+         base="${SRCROOT}/${tag#SRC}"
+         ;;
+      DEVICE_ASSET)
+         [[ -n ${IGconf_device_assetdir:-} ]] || return 1
+         base=${IGconf_device_assetdir}
+         ;;
+      IMAGE_ASSET)
+         [[ -n ${IGconf_image_assetdir:-} ]] || return 1
+         base=${IGconf_image_assetdir}
+         ;;
+      DYN*)
+         [[ -n ${DYNROOT:-} ]] || return 1
+         base="${DYNROOT}/${tag#DYN}"
+         ;;
+      TARGETDIR)
+         [[ -n ${IGconf_target_dir:-} ]] || return 1
+         base=${IGconf_target_dir}
+         ;;
+      *)
+         printf '%s\n' "$raw"
+         return 0
+         ;;
+   esac
+
+   if [[ -z $rest || $rest == "." ]]; then
+      printf '%s\n' "$base"
+   elif [[ $rest == /* ]]; then
+      printf '%s\n' "$(realpath -m "$rest")"
+   else
+      printf '%s\n' "$(realpath -m "$base/$rest")"
+   fi
+}
+export -f map_path
+
+
+# General purpose key=value normaliser that escapes characters that would
+# break shell expansion.
+safe_kv() {
+  python3 - "$1" <<'PY'
+import sys
+import re
+with open(sys.argv[1], encoding='utf-8') as src:
+   for raw in src:
+      line = raw.rstrip('\n')
+      if not line or line.lstrip().startswith('#') or '=' not in line:
+         print(line)
+         continue
+      key, value = line.split('=', 1)
+      value = value.replace('\\', '\\\\').replace('"', '\\"').replace('`', '\\`')
+      # Permits ${var} or $(cmd) expansion, escapes $6$salt$hash
+      value = re.sub(r'\$(?![({])', r'\\$', value)
+      print(f'{key}="{value}"')
+PY
 }
