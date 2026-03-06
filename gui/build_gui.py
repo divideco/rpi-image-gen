@@ -10,6 +10,7 @@ import platform
 import re
 import shlex
 import sys
+import shutil
 import tempfile
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -43,7 +44,7 @@ from PySide6.QtWidgets import (
     QStatusBar,
 )
 
-APP_VERSION = "full31_fixed"
+APP_VERSION = "full45"
 
 
 def repo_root_from_script() -> Path:
@@ -84,7 +85,7 @@ def discover_examples(repo_root: Path) -> list[dict]:
             yamls = sorted(list((d / "config").glob("*.yml")) + list((d / "config").glob("*.yaml")))
         if not yamls:
             continue
-        out.append({"name": d.name, "project_dir": str(d), "config_file": str(yamls[0])})
+        out.append({"name": d.name, "project_dir": str(d), "config_file": str(yamls[0]), "base_config": infer_base_config_from_config(repo_root, yamls[0])})
     return out
 
 
@@ -93,6 +94,76 @@ def discover_base_configs(repo_root: Path) -> list[Path]:
     if not cfgdir.exists():
         return []
     return sorted([p for p in cfgdir.iterdir() if p.is_file() and p.suffix.lower() in (".yaml", ".yml")])
+
+
+def iter_simple_includes(cfg_path: Path) -> list[Path]:
+    out: list[Path] = []
+    try:
+        txt = cfg_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return out
+
+    # include: somefile.yaml
+    for m in re.finditer(r"^\s*include\s*:\s*['\"]?([^'\"\n#]+\.ya?ml)['\"]?\s*$", txt, flags=re.M):
+        p = Path(m.group(1).strip())
+        if not p.is_absolute():
+            p = (cfg_path.parent / p).resolve()
+        out.append(p)
+
+    # include:\n  file: something.yaml
+    in_include_block = False
+    include_indent = None
+    for raw in txt.splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if re.match(r"^\s*include\s*:\s*$", raw):
+            in_include_block = True
+            include_indent = len(raw) - len(raw.lstrip())
+            continue
+        if in_include_block:
+            cur_indent = len(raw) - len(raw.lstrip())
+            if cur_indent <= (include_indent or 0):
+                in_include_block = False
+            else:
+                m = re.match(r"^\s*file\s*:\s*['\"]?([^'\"\n#]+\.ya?ml)['\"]?\s*$", raw)
+                if m:
+                    p = Path(m.group(1).strip())
+                    if not p.is_absolute():
+                        p = (cfg_path.parent / p).resolve()
+                    out.append(p)
+    return out
+
+
+def infer_base_config_from_config(repo_root: Path, cfg_path: Path, seen: set[str] | None = None) -> str:
+    if seen is None:
+        seen = set()
+    try:
+        rp = str(cfg_path.resolve())
+    except Exception:
+        rp = str(cfg_path)
+    if rp in seen:
+        return ""
+    seen.add(rp)
+
+    base_cfgs = {p.name: str(p.resolve()) for p in discover_base_configs(repo_root)}
+
+    # direct name match first
+    if cfg_path.name in base_cfgs:
+        return base_cfgs[cfg_path.name]
+
+    # if current config lives under repo_root/config and matches by filename stem hints
+    if cfg_path.parent.resolve() == (repo_root / "config").resolve():
+        return str(cfg_path.resolve())
+
+    for inc in iter_simple_includes(cfg_path):
+        if inc.name in base_cfgs:
+            return base_cfgs[inc.name]
+        found = infer_base_config_from_config(repo_root, inc, seen)
+        if found:
+            return found
+    return ""
+
 
 
 
@@ -126,6 +197,9 @@ class Profile:
     partitions: list[Partition] = field(default_factory=list)
     chroot_tasks: list[ChrootTask] = field(default_factory=list)
     chroot_enabled: bool = False
+    ab_enabled: bool = False
+    ab_slots: int = 2
+    partition_model_enabled: bool = False
 
     @staticmethod
     def from_dict(d: dict) -> "Profile":
@@ -224,6 +298,7 @@ class BuildGui(QMainWindow):
         self.tab_chroot = QWidget()
         self.tab_examples = QWidget()
         self.tab_layers = QWidget()
+        self.tab_hooks = QWidget()
         self.tab_log = QWidget()
 
         self.tabs.addTab(self.tab_build, "Build")
@@ -232,6 +307,7 @@ class BuildGui(QMainWindow):
         self.tabs.addTab(self.tab_chroot, "Chroot tasks")
         self.tabs.addTab(self.tab_examples, "Examples")
         self.tabs.addTab(self.tab_layers, "Layers")
+        self.tabs.addTab(self.tab_hooks, "Hooks")
         self.tabs.addTab(self.tab_log, "Log")
 
         self.build_build_tab()
@@ -240,6 +316,7 @@ class BuildGui(QMainWindow):
         self.build_chroot_tab()
         self.build_examples_tab()
         self.build_layers_tab()
+        self.build_hooks_tab()
         self.build_log_tab()
 
         self.proc = QProcess(self)
@@ -309,13 +386,16 @@ class BuildGui(QMainWindow):
         prof = self._profile_cache or Profile()
         prof.name = (self.profile_name.text() or "profile").strip()
         prof.target = self.target.currentText().strip()
-        prof.layout = self.layout.currentText().strip()
+        prof.layout = "ab" if self.is_ab_selected() else "rpios_single"
         prof.base_config = self.base_config.currentText().strip()
         prof.project_dir = self.project_dir.currentText().strip()
         prof.config_file = self.config_file.currentText().strip()
         prof.workroot = self.workroot.text().strip()
         prof.output_dir = self.output_dir.text().strip()
         prof.chroot_enabled = self.chk_chroot_enabled.isChecked()
+        prof.ab_enabled = self.is_ab_selected()
+        prof.ab_slots = int(self.ab_slots.currentText())
+        prof.partition_model_enabled = True
         prof.overrides = [ln.strip() for ln in self.overrides.toPlainText().splitlines() if ln.strip()]
         prof.extra_layers = [ln.strip() for ln in self.extra_layers.toPlainText().splitlines() if ln.strip()]
 
@@ -385,6 +465,7 @@ class BuildGui(QMainWindow):
                 name=item["name"],
                 target="pi5",
                 layout="rpios_single",
+                base_config=item.get("base_config", ""),
                 project_dir=item["project_dir"],
                 config_file=item["config_file"],
                 overrides=[f"image.name={item['name']}"],
@@ -402,25 +483,24 @@ class BuildGui(QMainWindow):
         self.profile_name = QLineEdit()
         self.target = QComboBox()
         self.target.addItems(["pi5", "cm5"])
-        self.layout = QComboBox()
-        self.layout.addItems(["rpios_single", "ab (future)"])
         self.base_config = QComboBox()
         self.base_config.setEditable(True)
         self.base_config.addItem("")
         for p in discover_base_configs(self.repo_root):
             self.base_config.addItem(str(p))
+        self.base_config.currentTextChanged.connect(lambda _=None: self.sync_partition_preset_from_config())
 
         self.project_dir = QComboBox()
         self.project_dir.setEditable(True)
         self.config_file = QComboBox()
         self.config_file.setEditable(True)
+        self.config_file.currentTextChanged.connect(lambda _=None: self.sync_partition_preset_from_config())
 
         self.workroot = QLineEdit(str((self.repo_root / "work").resolve()))
         self.output_dir = QLineEdit(str((self.repo_root / "work").resolve()))
 
         form.addRow("Name", self.profile_name)
         form.addRow("Target", self.target)
-        form.addRow("Layout", self.layout)
         form.addRow("Base config", self.base_config)
 
         pd_row = QHBoxLayout()
@@ -453,9 +533,18 @@ class BuildGui(QMainWindow):
         self.chk_chroot_enabled = QCheckBox("Enable chroot tasks after build")
         root.addWidget(self.chk_chroot_enabled)
 
+        self.chk_managed_project = QCheckBox("Use managed project copy in gui/projects/<profile>")
+        self.chk_managed_project.setChecked(True)
+        root.addWidget(self.chk_managed_project)
+
         btn_refresh = QPushButton("Refresh project/config dropdowns")
         btn_refresh.clicked.connect(self.refresh_project_config_dropdowns)
         root.addWidget(btn_refresh)
+
+        self.ab_suggestion_label = QLabel("A/B suggestions: auto")
+        self.ab_suggestion_label.setWordWrap(True)
+        self.ab_suggestion_label.setStyleSheet("color:#666; font-size:11px;")
+        root.addWidget(self.ab_suggestion_label)
 
         self.refresh_project_config_dropdowns()
 
@@ -497,6 +586,9 @@ class BuildGui(QMainWindow):
             self.config_file.setCurrentText(cur_cf)
         self.config_file.blockSignals(False)
 
+        self.sync_partition_preset_from_config()
+        self.update_ab_suggestions()
+
     def browse_project_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Select project dir", str(self.projects_dir))
         if not d:
@@ -509,34 +601,318 @@ class BuildGui(QMainWindow):
         if not ok or not f:
             return
         self.config_file.setCurrentText(str(Path(f).resolve()))
+        self.sync_partition_preset_from_config()
+        self.update_ab_suggestions()
 
     def load_profile_into_ui(self, prof: Profile):
         self.profile_name.setText(prof.name)
         self.target.setCurrentText(prof.target or "pi5")
-        self.layout.setCurrentText(prof.layout or "rpios_single")
-        self.base_config.setCurrentText(prof.base_config or "")
+        inferred_base = prof.base_config or (infer_base_config_from_config(self.repo_root, Path(prof.config_file)) if prof.config_file else "")
+        self.base_config.setCurrentText(inferred_base)
         self.project_dir.setCurrentText(prof.project_dir or "")
         self.config_file.setCurrentText(prof.config_file or "")
         self.workroot.setText(prof.workroot or str((self.repo_root / "work").resolve()))
         self.output_dir.setText(prof.output_dir or str((self.repo_root / "work").resolve()))
         self.chk_chroot_enabled.setChecked(bool(prof.chroot_enabled))
+        self.ab_slots.setCurrentText(str(getattr(prof, "ab_slots", 2)))
         self.overrides.setPlainText("\n".join(prof.overrides or []))
         self.extra_layers.setPlainText("\n".join(prof.extra_layers or []))
 
         self.part_table.setRowCount(0)
-        for part in (prof.partitions or []):
-            self.add_partition_row(part)
+        if prof.partitions:
+            for part in (prof.partitions or []):
+                self.add_partition_row(part)
+        else:
+            self.sync_partition_preset_from_config()
+        self.update_partition_summary()
 
         self.chroot_table.setRowCount(0)
         for t in (prof.chroot_tasks or []):
             self.add_chroot_row(t)
 
+        self.update_ab_suggestions()
+
+    # ---------------- Managed project integration ----------------
+
+    def managed_project_dir(self, profile_name: str) -> Path:
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", profile_name.strip()) or "profile"
+        return (self.projects_dir / safe).resolve()
+
+    def ensure_managed_project(self, src_project_dir: Path, profile_name: str) -> Path:
+        dst = self.managed_project_dir(profile_name)
+        ensure_dir(dst)
+        shutil.copytree(src_project_dir, dst, dirs_exist_ok=True)
+        return dst
+
+    def ensure_config_in_project(self, cfg_path: Path, project_dir: Path) -> Path:
+        cfg_dir = project_dir / "config"
+        ensure_dir(cfg_dir)
+        dst = cfg_dir / cfg_path.name
+        if cfg_path.resolve() != dst.resolve():
+            shutil.copy2(cfg_path, dst)
+        return dst
+
+
+    def parse_simple_config_sizes(self, cfg_path: Path) -> dict:
+        """Best-effort parse of size hints from YAML-like config files, following simple include/file chains."""
+        return self.parse_config_sizes_with_includes(cfg_path, seen=set())
+
+    def parse_config_sizes_with_includes(self, cfg_path: Path, seen: set[str]) -> dict:
+        out = {}
+        try:
+            rp = str(cfg_path.resolve())
+        except Exception:
+            rp = str(cfg_path)
+        if rp in seen:
+            return out
+        seen.add(rp)
+
+        try:
+            txt = cfg_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return out
+
+        patterns = {
+            "boot_part_size_mb": [
+                r"^\s*boot_part_size\s*:\s*['\"]?(\d+)\s*[Mm]['\"]?\s*$",
+                r"^\s*IGconf_gui_boot_part_size_mb\s*:\s*['\"]?(\d+)['\"]?\s*$",
+            ],
+            "root_part_size_mb": [
+                r"^\s*root_part_size\s*:\s*['\"]?(\d+)\s*[Mm]['\"]?\s*$",
+                r"^\s*IGconf_gui_root_part_size_mb\s*:\s*['\"]?(\d+)['\"]?\s*$",
+            ],
+            "rootfs_a_size_mb": [
+                r"^\s*IGconf_gui_rootfs_a_size_mb\s*:\s*['\"]?(\d+)['\"]?\s*$",
+            ],
+            "rootfs_b_size_mb": [
+                r"^\s*IGconf_gui_rootfs_b_size_mb\s*:\s*['\"]?(\d+)['\"]?\s*$",
+            ],
+            "data_part_size_mb": [
+                r"^\s*IGconf_gui_data_part_size_mb\s*:\s*['\"]?(\d+)['\"]?\s*$",
+            ],
+        }
+        for key, pats in patterns.items():
+            for pat in pats:
+                m = re.search(pat, txt, flags=re.M)
+                if m:
+                    out[key] = int(m.group(1))
+                    break
+
+        # Follow simple include chains:
+        # include:
+        #   file: something.yaml
+        # or
+        # include: something.yaml
+        include_paths = []
+
+        for m in re.finditer(r"^\s*include\s*:\s*['\"]?([^'\"\n#]+\.ya?ml)['\"]?\s*$", txt, flags=re.M):
+            include_paths.append(m.group(1).strip())
+
+        in_include_block = False
+        include_indent = None
+        for line in txt.splitlines():
+            raw = line.rstrip("\n")
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if re.match(r"^\s*include\s*:\s*$", raw):
+                in_include_block = True
+                include_indent = len(raw) - len(raw.lstrip())
+                continue
+            if in_include_block:
+                cur_indent = len(raw) - len(raw.lstrip())
+                if cur_indent <= (include_indent or 0):
+                    in_include_block = False
+                else:
+                    m = re.match(r"^\s*file\s*:\s*['\"]?([^'\"\n#]+\.ya?ml)['\"]?\s*$", raw)
+                    if m:
+                        include_paths.append(m.group(1).strip())
+
+        for inc in include_paths:
+            inc_path = Path(inc)
+            if not inc_path.is_absolute():
+                inc_path = (cfg_path.parent / inc_path).resolve()
+            child = self.parse_config_sizes_with_includes(inc_path, seen)
+            for k, v in child.items():
+                if k not in out:
+                    out[k] = v
+
+        return out
+
+    def apply_sizes_to_partition_table(self, sizes: dict):
+        if not hasattr(self, "part_table"):
+            return
+        label_to_row = {}
+        for r in range(self.part_table.rowCount()):
+            item = self.part_table.item(r, 0)
+            if item:
+                label_to_row[item.text().strip().lower()] = r
+
+        def set_size(label: str, key: str):
+            if key not in sizes:
+                return
+            r = label_to_row.get(label.lower())
+            if r is None:
+                return
+            self.part_table.setItem(r, 1, QTableWidgetItem(str(int(sizes[key]))))
+
+        set_size("boot", "boot_part_size_mb")
+        set_size("rootfs", "root_part_size_mb")
+        set_size("rootfs_a", "rootfs_a_size_mb")
+        set_size("rootfs_b", "rootfs_b_size_mb")
+        set_size("data", "data_part_size_mb")
+        self.update_partition_summary()
+
+    def autodetect_partition_sizes_from_selection(self):
+        """Read the selected config/base config and update partition sizes in the current preset."""
+        if not hasattr(self, "part_table"):
+            return
+        selected = ""
+        if hasattr(self, "base_config") and self.base_config.currentText().strip():
+            selected = self.base_config.currentText().strip()
+        elif hasattr(self, "config_file") and self.config_file.currentText().strip():
+            selected = self.config_file.currentText().strip()
+        if not selected:
+            self.update_partition_summary()
+            return
+        p = Path(selected)
+        if not p.exists():
+            self.update_partition_summary()
+            return
+        sizes = self.parse_simple_config_sizes(p)
+        if sizes:
+            self.apply_sizes_to_partition_table(sizes)
+
+
+    def infer_gui_config_metadata(self, prof: Profile) -> dict:
+        model = self.partition_model_from_ui()
+        parts = model.get("partitions", [])
+        total_mb = sum(int(p.get("size_mb", 0) or 0) for p in parts)
+
+        by_label = {}
+        boot = None
+        root = None
+        for p in parts:
+            label = (p.get("label") or "").lower()
+            mp = (p.get("mountpoint") or "").strip()
+            by_label[label] = p
+            if boot is None and ("boot" in label or mp == "/boot"):
+                boot = p
+            if root is None and (mp == "/" or label == "rootfs"):
+                root = p
+
+        root_a = by_label.get("rootfs_a")
+        root_b = by_label.get("rootfs_b")
+        data = by_label.get("data")
+
+        return {
+            "profile": prof.name,
+            "target": prof.target,
+            "layout": prof.layout,
+            "partition_model_enabled": True,
+            "ab_enabled": bool(model.get("ab_enabled")),
+            "ab_slots": int(model.get("ab_slots", 2) or 2),
+            "partition_preset": model.get("preset", ""),
+            "partition_count": len(parts),
+            "partition_total_mb": total_mb,
+            "partition_labels": ",".join((p.get("label") or "") for p in parts),
+            "boot_part_size_mb": int((boot or {}).get("size_mb", 0) or 0),
+            "root_part_size_mb": int((root or {}).get("size_mb", 0) or 0),
+            "rootfs_a_size_mb": int((root_a or {}).get("size_mb", 0) or 0),
+            "rootfs_b_size_mb": int((root_b or {}).get("size_mb", 0) or 0),
+            "data_part_size_mb": int((data or {}).get("size_mb", 0) or 0),
+        }
+
+    def write_gui_managed_config(self, project_dir: Path, prof: Profile, source_cfg_path: Path) -> Path:
+        cfg_dir = project_dir / "config"
+        ensure_dir(cfg_dir)
+
+        managed_path = cfg_dir / f"gui-managed-{source_cfg_path.stem}.yaml"
+        meta = self.infer_gui_config_metadata(prof)
+
+        lines = [
+            "# Generated by rpi-image-gen GUI",
+            "# This file is safe to regenerate. Edit the source config or GUI state instead.",
+            "include:",
+            f"  file: {source_cfg_path.name}",
+            "",
+            "env:",
+            f"  IGconf_gui_profile: {meta['profile']}",
+            f"  IGconf_gui_target: {meta['target']}",
+            f"  IGconf_gui_layout: {meta['layout']}",
+            f"  IGconf_gui_partition_model_enabled: {'1' if meta['partition_model_enabled'] else '0'}",
+            f"  IGconf_gui_ab_enabled: {'1' if meta['ab_enabled'] else '0'}",
+            f"  IGconf_gui_ab_slots: {meta['ab_slots']}",
+            f"  IGconf_gui_partition_preset: {meta['partition_preset']}",
+            f"  IGconf_gui_partition_count: {meta['partition_count']}",
+            f"  IGconf_gui_partition_total_mb: {meta['partition_total_mb']}",
+            f"  IGconf_gui_partition_labels: {meta['partition_labels'] or ''}",
+        ]
+
+        if meta["boot_part_size_mb"]:
+            lines.append(f"  IGconf_gui_boot_part_size_mb: {meta['boot_part_size_mb']}")
+        if meta["root_part_size_mb"]:
+            lines.append(f"  IGconf_gui_root_part_size_mb: {meta['root_part_size_mb']}")
+        if meta["rootfs_a_size_mb"]:
+            lines.append(f"  IGconf_gui_rootfs_a_size_mb: {meta['rootfs_a_size_mb']}")
+        if meta["rootfs_b_size_mb"]:
+            lines.append(f"  IGconf_gui_rootfs_b_size_mb: {meta['rootfs_b_size_mb']}")
+        if meta["data_part_size_mb"]:
+            lines.append(f"  IGconf_gui_data_part_size_mb: {meta['data_part_size_mb']}")
+
+        if meta["partition_model_enabled"] and (not meta["ab_enabled"]):
+            image_lines = []
+            if meta["boot_part_size_mb"]:
+                image_lines.append(f"  boot_part_size: {meta['boot_part_size_mb']}M")
+            if meta["root_part_size_mb"]:
+                image_lines.append(f"  root_part_size: {meta['root_part_size_mb']}M")
+            if image_lines:
+                lines += ["", "image:"] + image_lines
+
+        if meta["ab_enabled"]:
+            lines += [
+                "",
+                "# GUI A/B preset metadata",
+                "# These env values are intended for A/B-capable configs/layers to consume.",
+                "# The GUI also suggests/auto-selects A/B-named configs and layers when available.",
+            ]
+
+        managed_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return managed_path
+
+    def project_dir_for_build(self, prof: Profile) -> Path:
+        pd_txt = (prof.project_dir or "").strip()
+        if not pd_txt:
+            return Path()
+        src = Path(pd_txt).resolve()
+        if not src.exists():
+            return Path()
+        if getattr(self, "chk_managed_project", None) and self.chk_managed_project.isChecked():
+            return self.ensure_managed_project(src, prof.name)
+        return src
+
+
     # Partitions tab
     def build_partitions_tab(self):
         l = QVBoxLayout(self.tab_partitions)
-        hint = QLabel("Partition editor (basic).")
+        hint = QLabel("Partition editor with GUI-managed partition model. A/B is derived automatically from the selected base config or config file.")
         hint.setWordWrap(True)
         l.addWidget(hint)
+
+        ab_box = QGroupBox("Partition model")
+        ab_form = QFormLayout(ab_box)
+        self.ab_slots = QComboBox()
+        self.ab_slots.addItems(["2"])
+        self.ab_mode_label = QLabel("Derived mode: single-root")
+        self.ab_mode_label.setStyleSheet("color:#666; font-size:11px;")
+        ab_form.addRow("A/B mode", self.ab_mode_label)
+        ab_form.addRow("Slots", self.ab_slots)
+        l.addWidget(ab_box)
+
+        self.partition_summary = QLabel("")
+        self.partition_summary.setWordWrap(True)
+        self.partition_summary.setStyleSheet("color:#666; font-size:11px;")
+        l.addWidget(self.partition_summary)
 
         self.part_table = QTableWidget(0, 4)
         self.part_table.setHorizontalHeaderLabels(["Label", "Size (MB)", "FS", "Mountpoint"])
@@ -546,15 +922,23 @@ class BuildGui(QMainWindow):
         btns = QHBoxLayout()
         b_add = QPushButton("Add")
         b_del = QPushButton("Remove selected")
+        b_write = QPushButton("Write model now")
+        b_single = QPushButton("Single-root preset")
+        b_ab = QPushButton("A/B preset")
         b_add.clicked.connect(lambda: self.add_partition_row(Partition()))
         b_del.clicked.connect(self.remove_selected_partitions)
+        b_write.clicked.connect(self.write_partition_model_now)
+        b_single.clicked.connect(self.apply_single_partition_preset)
+        b_ab.clicked.connect(self.apply_ab_partition_preset)
         btns.addWidget(b_add)
         btns.addWidget(b_del)
+        btns.addWidget(b_write)
+        btns.addWidget(b_single)
+        btns.addWidget(b_ab)
         btns.addStretch(1)
         l.addLayout(btns)
 
-        self.add_partition_row(Partition(label="boot", size_mb=512, fs="vfat", mountpoint="/boot"))
-        self.add_partition_row(Partition(label="rootfs", size_mb=4096, fs="ext4", mountpoint="/"))
+        self.sync_partition_preset_from_config()
 
     def add_partition_row(self, part: Partition):
         r = self.part_table.rowCount()
@@ -563,11 +947,128 @@ class BuildGui(QMainWindow):
         self.part_table.setItem(r, 1, QTableWidgetItem(str(part.size_mb)))
         self.part_table.setItem(r, 2, QTableWidgetItem(part.fs))
         self.part_table.setItem(r, 3, QTableWidgetItem(part.mountpoint))
+        self.update_partition_summary()
 
     def remove_selected_partitions(self):
         rows = sorted({i.row() for i in self.part_table.selectedItems()}, reverse=True)
         for r in rows:
             self.part_table.removeRow(r)
+        self.update_partition_summary()
+
+    def is_ab_selected(self) -> bool:
+        txt = (getattr(self, "base_config", None).currentText().strip() if getattr(self, "base_config", None) else "")
+        cfg = (getattr(self, "config_file", None).currentText().strip() if getattr(self, "config_file", None) else "")
+        # base config drives the mode when selected; otherwise fall back to config file
+        cand = (txt or cfg).lower()
+        name = Path(cand).name
+        return name.endswith("-ab.yaml") or name.endswith("-ab.yml") or "-ab" in name or "_ab" in name
+
+    def apply_single_partition_preset(self):
+        self.part_table.setRowCount(0)
+        self.add_partition_row(Partition(label="boot", size_mb=512, fs="vfat", mountpoint="/boot"))
+        self.add_partition_row(Partition(label="rootfs", size_mb=4096, fs="ext4", mountpoint="/"))
+        self.update_partition_summary()
+
+    def apply_ab_partition_preset(self):
+        self.part_table.setRowCount(0)
+        self.add_partition_row(Partition(label="boot", size_mb=512, fs="vfat", mountpoint="/boot"))
+        self.add_partition_row(Partition(label="rootfs_a", size_mb=3072, fs="ext4", mountpoint="/"))
+        self.add_partition_row(Partition(label="rootfs_b", size_mb=3072, fs="ext4", mountpoint="/_b"))
+        self.add_partition_row(Partition(label="data", size_mb=2048, fs="ext4", mountpoint="/data"))
+        self.update_partition_summary()
+
+    def sync_partition_preset_from_config(self):
+        # build_profile_tab runs before build_partitions_tab, so these widgets may not exist yet
+        if not hasattr(self, "part_table") or not hasattr(self, "ab_mode_label"):
+            return
+        current_labels = []
+        for r in range(self.part_table.rowCount()):
+            item = self.part_table.item(r, 0)
+            current_labels.append((item.text() if item else "").lower())
+
+        wants_ab = self.is_ab_selected()
+        ab_labels = ["boot", "rootfs_a", "rootfs_b", "data"]
+        single_labels = ["boot", "rootfs"]
+
+        if wants_ab:
+            self.ab_mode_label.setText("Derived mode: A/B")
+            if current_labels != ab_labels:
+                self.apply_ab_partition_preset()
+            else:
+                self.update_partition_summary()
+        else:
+            self.ab_mode_label.setText("Derived mode: single-root")
+            if current_labels != single_labels:
+                self.apply_single_partition_preset()
+            else:
+                self.update_partition_summary()
+        self.autodetect_partition_sizes_from_selection()
+
+    def update_partition_summary(self):
+        if not hasattr(self, "part_table") or not hasattr(self, "partition_summary"):
+            return
+        parts = []
+        total = 0
+        for r in range(self.part_table.rowCount()):
+            label = self.part_table.item(r, 0).text() if self.part_table.item(r, 0) else ""
+            size = int(self.part_table.item(r, 1).text()) if self.part_table.item(r, 1) else 0
+            total += size
+            parts.append(f"{label}:{size}MB")
+        preset = "A/B" if self.is_ab_selected() else "single-root"
+        if hasattr(self, "ab_mode_label"):
+            self.ab_mode_label.setText(f"Derived mode: {preset}")
+        self.partition_summary.setText(f"{preset} preset, {len(parts)} partition(s), total {total}MB. " + ", ".join(parts) + " (sizes may be auto-detected from selected config)")
+
+    def partition_model_from_ui(self) -> dict:
+        parts = []
+        for r in range(self.part_table.rowCount()):
+            parts.append({
+                "label": self.part_table.item(r, 0).text() if self.part_table.item(r, 0) else "",
+                "size_mb": int(self.part_table.item(r, 1).text()) if self.part_table.item(r, 1) else 0,
+                "fs": self.part_table.item(r, 2).text() if self.part_table.item(r, 2) else "",
+                "mountpoint": self.part_table.item(r, 3).text() if self.part_table.item(r, 3) else "",
+            })
+        ab = self.is_ab_selected()
+        return {
+            "enabled": True,
+            "ab_enabled": ab,
+            "ab_slots": int(self.ab_slots.currentText()),
+            "preset": "ab_dual_root" if ab else "single_root",
+            "partitions": parts,
+        }
+
+    def write_partition_model_file(self, project_dir: Path, prof: Profile) -> Path:
+        out_dir = project_dir / "gui"
+        ensure_dir(out_dir)
+        out = out_dir / "partition-model.json"
+        model = self.partition_model_from_ui()
+        model["profile"] = prof.name
+        model["target"] = prof.target
+        model["layout"] = prof.layout
+        out.write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
+        return out
+
+    def summarize_partition_model(self, prof: Profile) -> str:
+        model = self.partition_model_from_ui()
+        parts = model["partitions"]
+        total = sum(int(p.get("size_mb", 0) or 0) for p in parts)
+        names = ", ".join(p.get("label", "") for p in parts)
+        ab = "enabled" if model["ab_enabled"] else "disabled"
+        return f"partition-model: preset={model.get('preset','')}, {len(parts)} partition(s), total={total}MB, labels=[{names}], A/B={ab}"
+
+    def write_partition_model_now(self):
+        prof = self.current_profile_from_ui()
+        proj_dir = self.project_dir_for_build(prof)
+        if not proj_dir:
+            QMessageBox.information(self, "Partition model", "Select a project dir first.")
+            return
+        try:
+            pm = self.write_partition_model_file(Path(proj_dir), prof)
+            self.log.appendPlainText(f"[gui] wrote partition model: {pm}")
+            self.log.appendPlainText(f"[gui] {self.summarize_partition_model(prof)}")
+            self.tabs.setCurrentWidget(self.tab_log)
+        except Exception as e:
+            QMessageBox.warning(self, "Partition model", f"Failed to write partition model: {e}")
 
     # Chroot tab
     def build_chroot_tab(self):
@@ -664,12 +1165,44 @@ class BuildGui(QMainWindow):
 
         mode = self.build_mode.currentText().strip()
         args = [str(rpig), mode]
-        if prof.project_dir:
-            args += ["-S", prof.project_dir]
+
+        proj_dir = self.project_dir_for_build(prof)
+        if proj_dir:
+            args += ["-S", str(proj_dir)]
+            try:
+                pm = self.write_partition_model_file(Path(proj_dir), prof)
+                self.log.appendPlainText(f"[gui] wrote partition model: {pm}")
+                self.log.appendPlainText(f"[gui] {self.summarize_partition_model(prof)}")
+                if self.is_ab_selected():
+                    self.log.appendPlainText("[gui] A/B intent enabled. Select an A/B-capable config/layer for the actual image layout.")
+            except Exception as e:
+                QMessageBox.warning(self, "Partition model", f"Failed to write partition model: {e}")
+
+        managed_cfg = None
+
         if prof.config_file:
-            args += ["-c", prof.config_file]
-        if prof.base_config:
-            args += ["-b", prof.base_config]
+            cfg_path = Path(prof.config_file).resolve()
+            if proj_dir and cfg_path.exists():
+                try:
+                    cfg_path = self.ensure_config_in_project(cfg_path, proj_dir)
+                    managed_cfg = self.write_gui_managed_config(Path(proj_dir), prof, cfg_path)
+                    self.log.appendPlainText(f"[gui] wrote managed config: {managed_cfg}")
+                except Exception as e:
+                    QMessageBox.warning(self, "Managed config", f"Failed to prepare managed config: {e}")
+            args += ["-c", str(managed_cfg or cfg_path)]
+        elif prof.base_config:
+            if proj_dir:
+                try:
+                    base_cfg = Path(prof.base_config).resolve()
+                    managed_cfg = self.write_gui_managed_config(Path(proj_dir), prof, base_cfg)
+                    self.log.appendPlainText(f"[gui] wrote managed config: {managed_cfg}")
+                    args += ["-c", str(managed_cfg)]
+                except Exception as e:
+                    QMessageBox.warning(self, "Managed config", f"Failed to prepare managed config: {e}")
+                    args += ["-c", prof.base_config]
+            else:
+                args += ["-c", prof.base_config]
+
         for o in prof.overrides:
             if "=" in o:
                 args += ["-O", o]
@@ -677,6 +1210,8 @@ class BuildGui(QMainWindow):
         self.run_command(args, cwd=str(self.repo_root), cross=(self.chk_cross.isChecked() and not is_arm64()))
 
     # Process runner
+
+
     def run_command(self, args: list[str], cwd: str, cross: bool = False):
         if self.proc.state() != QProcess.NotRunning:
             QMessageBox.warning(self, "Busy", "A command is already running.")
@@ -803,7 +1338,7 @@ class BuildGui(QMainWindow):
             return
         ex = it.data(Qt.UserRole)
         cfg = Path(ex["config_file"])
-        txt = f"Project: {ex['project_dir']}\nConfig: {ex['config_file']}\n\n"
+        txt = f"Project: {ex['project_dir']}\nConfig: {ex['config_file']}\nBase config: {ex.get('base_config', '')}\n\n"
         try:
             txt += cfg.read_text(encoding="utf-8", errors="replace")
         except Exception:
@@ -826,7 +1361,7 @@ class BuildGui(QMainWindow):
         if out.exists():
             QMessageBox.information(self, "Exists", "Profile already exists.")
             return
-        prof = Profile(name=ex["name"], project_dir=ex["project_dir"], config_file=ex["config_file"], overrides=[f"image.name={ex['name']}"])
+        prof = Profile(name=ex["name"], base_config=ex.get("base_config",""), project_dir=ex["project_dir"], config_file=ex["config_file"], overrides=[f"image.name={ex['name']}"])
         out.write_text(json.dumps(asdict(prof), indent=2) + "\n", encoding="utf-8")
         self.refresh_profile_list()
 
@@ -893,6 +1428,7 @@ class BuildGui(QMainWindow):
 
         self.apply_layer_filter()
         self.layer_details.setPlainText(out.strip() or "(no output)")
+        self.update_ab_suggestions()
 
     def apply_layer_filter(self):
         f = (self.layer_filter.text() or "").strip().lower()
@@ -921,6 +1457,227 @@ class BuildGui(QMainWindow):
         p.waitForFinished(60_000)
         out = p.readAllStandardOutput().data().decode(errors="replace")
         self.layer_details.setPlainText(out.strip() or "(no output)")
+
+
+    # ---------------- A/B suggestions ----------------
+
+    def score_ab_candidate(self, name: str) -> int:
+        n = (name or "").lower()
+        score = 0
+        for token, pts in [
+            ("rota", 10),
+            ("tryboot", 8),
+            ("a-b", 8),
+            ("_ab", 8),
+            ("-ab", 8),
+            ("ab-", 6),
+            ("dual", 5),
+            ("slot", 4),
+            ("update", 3),
+        ]:
+            if token in n:
+                score += pts
+        return score
+
+    def discover_ab_candidates(self) -> dict:
+        config_candidates = []
+        for combo in (getattr(self, "base_config", None), getattr(self, "config_file", None)):
+            if not combo:
+                continue
+            for i in range(combo.count()):
+                txt = combo.itemText(i).strip()
+                if not txt:
+                    continue
+                score = self.score_ab_candidate(Path(txt).name)
+                if score > 0:
+                    config_candidates.append((score, txt))
+
+        layer_candidates = []
+        for name in getattr(self, "_all_layers", []) or []:
+            score = self.score_ab_candidate(name)
+            if score > 0:
+                layer_candidates.append((score, name))
+
+        config_candidates.sort(key=lambda x: (-x[0], x[1]))
+        layer_candidates.sort(key=lambda x: (-x[0], x[1]))
+        return {"configs": config_candidates, "layers": layer_candidates}
+
+    def update_ab_suggestions(self):
+        label = getattr(self, "ab_suggestion_label", None)
+        if not label:
+            return
+
+        enabled = self.is_ab_selected()
+        if not enabled:
+            label.setText("A/B suggestions: choose a -ab base config or config file to enable A/B")
+            return
+
+        cand = self.discover_ab_candidates()
+        cfgs = cand["configs"]
+        layers = cand["layers"]
+
+        cfg_txt = cfgs[0][1] if cfgs else "none found"
+        layer_txt = ", ".join(x[1] for x in layers[:3]) if layers else "none found"
+
+        label.setText(f"A/B active via config selection. Suggested layers={layer_txt}")
+
+        # conservative auto-select: only if nothing is currently selected
+        if cfgs:
+            best = cfgs[0][1]
+            if not self.config_file.currentText().strip() and not self.base_config.currentText().strip():
+                # Prefer explicit config_file if the candidate is present there, else base_config
+                set_done = False
+                for i in range(self.config_file.count()):
+                    if self.config_file.itemText(i).strip() == best:
+                        self.config_file.setCurrentText(best)
+                        set_done = True
+                        break
+                if not set_done:
+                    for i in range(self.base_config.count()):
+                        if self.base_config.itemText(i).strip() == best:
+                            self.base_config.setCurrentText(best)
+                            break
+
+    def apply_ab_suggestions(self):
+        QMessageBox.information(self, "A/B suggestions", "A/B is now driven automatically by the selected base config or config file.")
+
+    # ---------------- Hooks tab ----------------
+
+    def build_hooks_tab(self):
+        l = QVBoxLayout(self.tab_hooks)
+
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Project hooks (project_dir/bdebstrap/*)"), 1)
+        self.btn_hooks_refresh = QPushButton("Refresh")
+        self.btn_hooks_refresh.clicked.connect(self.refresh_hooks_list)
+        self.btn_hooks_open_dir = QPushButton("Open hooks folder")
+        self.btn_hooks_open_dir.clicked.connect(self.open_hooks_folder)
+        top.addWidget(self.btn_hooks_refresh)
+        top.addWidget(self.btn_hooks_open_dir)
+        l.addLayout(top)
+
+        mid = QSplitter(Qt.Horizontal)
+        l.addWidget(mid, 1)
+
+        left = QWidget()
+        ll = QVBoxLayout(left)
+        self.hooks_list = QListWidget()
+        self.hooks_list.itemSelectionChanged.connect(self.on_hook_selected)
+        ll.addWidget(self.hooks_list, 1)
+
+        btns = QHBoxLayout()
+        self.btn_hook_new = QPushButton("New hook…")
+        self.btn_hook_new.clicked.connect(self.new_hook)
+        self.btn_hook_save = QPushButton("Save")
+        self.btn_hook_save.clicked.connect(self.save_hook)
+        self.btn_hook_reload = QPushButton("Reload")
+        self.btn_hook_reload.clicked.connect(self.reload_hook)
+        btns.addWidget(self.btn_hook_new)
+        btns.addWidget(self.btn_hook_save)
+        btns.addWidget(self.btn_hook_reload)
+        btns.addStretch(1)
+        ll.addLayout(btns)
+
+        mid.addWidget(left)
+
+        right = QWidget()
+        rl = QVBoxLayout(right)
+        self.hook_path_label = QLabel("")
+        self.hook_path_label.setStyleSheet("color:#666; font-size:11px;")
+        rl.addWidget(self.hook_path_label)
+        self.hook_editor = QPlainTextEdit()
+        rl.addWidget(self.hook_editor, 1)
+        mid.addWidget(right)
+        mid.setSizes([320, 800])
+
+        self._current_hook_path = None
+        self.refresh_hooks_list()
+
+    def hooks_dir_for_current_profile(self) -> Path | None:
+        prof = self._profile_cache or self.current_profile_from_ui()
+        proj_dir = self.project_dir_for_build(prof)
+        if not proj_dir:
+            return None
+        hd = Path(proj_dir) / "bdebstrap"
+        ensure_dir(hd)
+        return hd
+
+    def refresh_hooks_list(self):
+        self.hooks_list.clear()
+        self._current_hook_path = None
+        self.hook_path_label.setText("")
+        self.hook_editor.setPlainText("")
+
+        hd = self.hooks_dir_for_current_profile()
+        if not hd:
+            return
+
+        files = sorted([p for p in hd.iterdir() if p.is_file() and not p.name.startswith(".")])
+        for p in files:
+            it = QListWidgetItem(p.name)
+            it.setData(Qt.UserRole, str(p))
+            self.hooks_list.addItem(it)
+
+    def on_hook_selected(self):
+        it = self.hooks_list.currentItem()
+        if not it:
+            return
+        p = Path(it.data(Qt.UserRole))
+        self._current_hook_path = p
+        self.hook_path_label.setText(str(p))
+        try:
+            self.hook_editor.setPlainText(p.read_text(encoding="utf-8", errors="replace"))
+        except Exception as e:
+            QMessageBox.warning(self, "Hook", f"Failed to read {p}: {e}")
+
+    def save_hook(self):
+        if not self._current_hook_path:
+            return
+        try:
+            self._current_hook_path.write_text(self.hook_editor.toPlainText(), encoding="utf-8")
+            mode = self._current_hook_path.stat().st_mode
+            self._current_hook_path.chmod(mode | 0o111)
+            self.statusBar().showMessage(f"Saved hook: {self._current_hook_path.name}")
+        except Exception as e:
+            QMessageBox.warning(self, "Hook", f"Failed to save: {e}")
+
+    def reload_hook(self):
+        if self._current_hook_path and self._current_hook_path.exists():
+            try:
+                self.hook_editor.setPlainText(self._current_hook_path.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                pass
+
+    def new_hook(self):
+        hd = self.hooks_dir_for_current_profile()
+        if not hd:
+            QMessageBox.information(self, "Hooks", "Select a profile/project first.")
+            return
+        name, ok = QFileDialog.getSaveFileName(
+            self,
+            "New hook file",
+            str(hd / "customize50-myhook.sh"),
+            "Shell (*.sh);;All (*.*)"
+        )
+        if not ok or not name:
+            return
+        p = Path(name)
+        if not p.exists():
+            p.write_text("#!/bin/sh\nset -eu\n\n", encoding="utf-8")
+            p.chmod(p.stat().st_mode | 0o111)
+        self.refresh_hooks_list()
+        for i in range(self.hooks_list.count()):
+            it = self.hooks_list.item(i)
+            if Path(it.data(Qt.UserRole)) == p:
+                self.hooks_list.setCurrentItem(it)
+                break
+
+    def open_hooks_folder(self):
+        hd = self.hooks_dir_for_current_profile()
+        if not hd:
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(hd.resolve())))
+
 
     # Log tab
     def build_log_tab(self):
